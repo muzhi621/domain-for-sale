@@ -10,7 +10,7 @@
 
 - 访客端：每个域名独立的出售页（按 Host 路由），含 SEO meta、询价表单。
 - 后台：`/admin` 登录、域名列表/新增/编辑/删除、批量导入（CSV）、询价管理。
-- 存储：KV（Cloudflare KV 与 EdgeOne KV 通用，绑定变量名 `KV`）。30 个域名完全够用。
+- 存储：KV（Cloudflare KV 与 EdgeOne KV 通用，绑定变量名 `DOMAIN_KV`）。30 个域名完全够用。
 - 安全：后台密码（环境变量 `ADMIN_PASSWORD`，SHA-256 校验）+ 会话 Cookie 鉴权；询价接口防注入。
 
 ## 目录结构
@@ -25,8 +25,7 @@ domain-for-sale/
 │   ├── views.ts            # HTML 模板
 │   └── dev.ts             # 本地开发服务器（内存 KV）
 ├── data/domains.sample.csv # 导入模板示例
-├── wrangler.toml          # Cloudflare 配置
-├── edgeone.json           # EdgeOne 配置
+├── edgeone.json           # EdgeOne 配置（functions 运行时 = edge）
 └── .github/workflows/     # 可选：GitHub Actions 双平台部署
 ```
 
@@ -55,15 +54,15 @@ git push -u origin main
 
 ### 1. Cloudflare Pages
 1. 控制台 → Workers & Pages → Create → Pages → 连接 Git 仓库。
-2. 框架预设选「无 / 其他」；构建命令留空（或 `npm install`），输出目录 `.`。
-3. 项目设置 → Functions → KV 命名空间绑定 → 新建/绑定一个 KV，变量名填 `KV`。
+2. 框架预设选「无 / 其他」；构建命令 `npm install`，输出目录 `.`。
+3. 项目设置 → 绑定 → 添加 → KV 命名空间，变量名填 `DOMAIN_KV`（本仓库不附带 wrangler.toml，绑定全部在控制台管理，按钮可直接点击）。
 4. 设置环境变量 `ADMIN_PASSWORD`（后台密码）。
-5. 以后 `git push` 即自动部署。
+5. 保存后点「部署」重新部署一次，绑定才生效；以后 `git push` 即自动部署。
 
 ### 2. 腾讯云 EdgeOne Pages
 1. 控制台 → EdgeOne Pages → 绑定 Github → 选择仓库。
 2. 构建命令 `npm install`，输出目录 `.`（已含 `edgeone.json`）。
-3. 项目 → KV 存储 → 绑定命名空间，变量名填 `KV`。
+3. 项目 → KV 存储 → 绑定命名空间，变量名填 `DOMAIN_KV`。
 4. 环境变量设置 `ADMIN_PASSWORD`。
 5. 以后 `git push` 即自动部署。
 

@@ -3,10 +3,10 @@ import { Storage, DomainRecord, InquiryRecord, KVLike } from './storage'
 import { parseCSV } from './csv'
 import * as views from './views'
 
-type Bindings = { KV: KVLike; ADMIN_PASSWORD?: string }
+type Bindings = { DOMAIN_KV: KVLike; ADMIN_PASSWORD?: string }
 const app = new Hono<{ Bindings: Bindings }>()
 
-const storage = (c: any): Storage => new Storage(c.env.KV)
+const storage = (c: any): Storage => new Storage(c.env.DOMAIN_KV)
 const adminPassword = (c: any): string => c.env.ADMIN_PASSWORD || 'admin123'
 
 function newToken(): string {

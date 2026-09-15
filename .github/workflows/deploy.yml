@@ -25,7 +25,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy . --branch main
+          command: pages deploy . --project-name domain-for-sale --branch main
 
   edgeone:
     runs-on: ubuntu-latest
