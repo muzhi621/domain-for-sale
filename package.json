@@ -1,0 +1,24 @@
+{
+  "name": "domain-for-sale",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "多域名出售展示系统：一套 Hono 应用，按 Host 路由展示页，后台管理 + 批量导入，可部署到 Cloudflare Pages 与 EdgeOne Pages。",
+  "scripts": {
+    "dev": "tsx src/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "deploy:cf": "wrangler pages deploy . --branch main",
+    "deploy:edgeone": "edgeone pages deploy"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@types/node": "^22.20.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.90.0"
+  }
+}

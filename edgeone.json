@@ -1,0 +1,9 @@
+{
+  "build": {
+    "command": "npm install",
+    "output": "."
+  },
+  "functions": {
+    "runtime": "edge"
+  }
+}

@@ -1,0 +1,4 @@
+﻿domain,price,currency,min_offer,status,category,description,tags,registrar,expires_at,buy_now_url,contact_email,contact_phone,contacts,meta_title,meta_description
+example-sale.com,8888,CNY,6000,for_sale,品牌,优质短域名，适合品牌建站。,品牌;短域名,,2027-08-01,https://escrow.example.com/buy/example-sale.com,seller@example.com,13800000000,"{""wechat"":""seller_wx""}",Example Sale 出售,example-sale.com 正在出售，欢迎询价
+ai-tools.cn,12800,CNY,,for_sale,AI,AI 相关优质域名，适合工具类产品。,AI;工具,,,https://escrow.example.com/buy/ai-tools.cn,seller@example.com,,,"",AI Tools 出售,ai-tools.cn 优质 AI 域名出售
+crypto-hub.com,,,reserved,区块链,区块链相关域名，已预订。,区块链,,,seller@example.com,,,,"",Crypto Hub 出售,crypto-hub.com 已预订

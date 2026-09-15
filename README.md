@@ -1,0 +1,89 @@
+# 域名出售展示系统（DomainForSale）
+
+一套基于 **Hono** 的轻量系统：用同一份代码服务多个待售域名。访问某个域名时，按 `Host` 头自动展示该域名的出售页（含报价、联系方式、询价表单），并提供后台管理（域名 CRUD、批量导入 CSV、询价管理）。
+
+**一套代码，可同时部署到 Cloudflare Pages 与腾讯云 EdgeOne Pages**（均使用 `functions/` 边缘函数 + KV 存储），推送到 GitHub 后在两家平台后台「连接仓库」即可一键部署。
+
+---
+
+## 功能
+
+- 访客端：每个域名独立的出售页（按 Host 路由），含 SEO meta、询价表单。
+- 后台：`/admin` 登录、域名列表/新增/编辑/删除、批量导入（CSV）、询价管理。
+- 存储：KV（Cloudflare KV 与 EdgeOne KV 通用，绑定变量名 `KV`）。30 个域名完全够用。
+- 安全：后台密码（环境变量 `ADMIN_PASSWORD`，SHA-256 校验）+ 会话 Cookie 鉴权；询价接口防注入。
+
+## 目录结构
+
+```
+domain-for-sale/
+├── functions/[[path]].ts   # 边缘适配器（CF / EdgeOne 通用）
+├── src/
+│   ├── index.ts            # Hono 应用（路由 + 逻辑）
+│   ├── storage.ts          # Storage 抽象 + KV 实现 + 本地内存 KV
+│   ├── csv.ts              # CSV 解析
+│   ├── views.ts            # HTML 模板
+│   └── dev.ts             # 本地开发服务器（内存 KV）
+├── data/domains.sample.csv # 导入模板示例
+├── wrangler.toml          # Cloudflare 配置
+├── edgeone.json           # EdgeOne 配置
+└── .github/workflows/     # 可选：GitHub Actions 双平台部署
+```
+
+## 本地开发
+
+```bash
+npm install
+npm run dev          # 默认 http://localhost:8788
+# 展示页测试：
+curl -H "Host: example-sale.com" http://localhost:8788/
+# 后台： http://localhost:8788/admin  （默认密码 admin123）
+# 设置自定义密码： ADMIN_PASSWORD=你的密码 npm run dev
+```
+
+## 部署（GitHub 一键部署）
+
+### 0. 推送到 GitHub
+```bash
+git init
+git remote add origin https://github.com/<你>/<仓库名>.git
+git add .
+git commit -m "init: 域名出售展示系统"
+git branch -M main
+git push -u origin main
+```
+
+### 1. Cloudflare Pages
+1. 控制台 → Workers & Pages → Create → Pages → 连接 Git 仓库。
+2. 框架预设选「无 / 其他」；构建命令留空（或 `npm install`），输出目录 `.`。
+3. 项目设置 → Functions → KV 命名空间绑定 → 新建/绑定一个 KV，变量名填 `KV`。
+4. 设置环境变量 `ADMIN_PASSWORD`（后台密码）。
+5. 以后 `git push` 即自动部署。
+
+### 2. 腾讯云 EdgeOne Pages
+1. 控制台 → EdgeOne Pages → 绑定 Github → 选择仓库。
+2. 构建命令 `npm install`，输出目录 `.`（已含 `edgeone.json`）。
+3. 项目 → KV 存储 → 绑定命名空间，变量名填 `KV`。
+4. 环境变量设置 `ADMIN_PASSWORD`。
+5. 以后 `git push` 即自动部署。
+
+### 3. 接入你的 30 个域名
+对每一个域名：
+- DNS 改为 CNAME 指向平台分配的地址（Cloudflare 通用域 / EdgeOne 提供的地址）。
+- 在平台后台「自定义域」中添加该域名，等待自动签发 SSL。
+- 后台 `/admin/import` 粘贴 CSV（表头见 `data/domains.sample.csv`）批量导入，或逐个新增。
+
+> 两个平台可同时接入同一批域名（各加自定义域），但同一域名同一时刻只能指向其中一个平台。建议先在一个平台跑通，再决定主用哪家。
+
+## 数据字段（CSV 表头）
+
+`domain,price,currency,min_offer,status,category,description,tags,registrar,expires_at,buy_now_url,contact_email,contact_phone,contacts,meta_title,meta_description`
+
+- `status`：`for_sale` / `reserved` / `sold`
+- `tags`：逗号分隔
+- `contacts`：JSON 字符串，如 `{"wechat":"xxx","telegram":"yyy"}`
+
+## 说明 / 取舍
+
+- 为「一套代码双平台」选用 KV 存储（而非 Cloudflare D1），对 30 个域名完全够用；如需更强查询/统计，可后续在 Cloudflare 侧切换为 D1（扩展 Storage 适配层即可）。
+- 交易闭环未内置，展示页「立即购买」链接到外部担保交易地址即可。

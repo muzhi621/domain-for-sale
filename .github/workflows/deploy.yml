@@ -1,0 +1,40 @@
+name: Deploy to Cloudflare & EdgeOne
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 说明：本工作流是「平台 Git 一键部署」之外的可选方案。
+# 平台 Git 集成（在 CF / EdgeOne 后台连接仓库）本身已能在 git push 时自动部署，
+# 无需此文件。若想用 GitHub Actions 统一双平台发布，请在仓库 Settings → Secrets 中配置：
+#   CLOUDFLARE_API_TOKEN  + CLOUDFLARE_ACCOUNT_ID   （Cloudflare API Token，含 Pages 权限）
+#   EDGEONE_API_TOKEN                                （EdgeOne API Token）
+# 未配置对应 Secret 时，对应 job 会自动跳过。
+
+jobs:
+  cloudflare:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy . --branch main
+
+  edgeone:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.EDGEONE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g edgeone
+      - run: edgeone login --token "${{ secrets.EDGEONE_API_TOKEN }}"
+      - run: edgeone pages deploy
