@@ -125,10 +125,15 @@ detect_upstream_host() {
 # ----------------------------- 卸载模式 -----------------------------
 do_uninstall() {
   log "开始卸载 domain-for-sale 部署…"
-  # 1) 停止 pm2 进程
-  if command -v pm2 >/dev/null 2>&1; then
-    pm2 delete domain-for-sale 2>/dev/null || true
-    pm2 save 2>/dev/null || true
+  # 1) 停止 pm2 进程（pm2 可能不在 PATH，尝试 npm 全局 bin 目录）
+  local pm2_bin="pm2"
+  if ! command -v pm2 >/dev/null 2>&1; then
+    local np_bin; np_bin="$(npm prefix -g 2>/dev/null)/bin"
+    [ -x "$np_bin/pm2" ] && pm2_bin="$np_bin/pm2"
+  fi
+  if command -v "$pm2_bin" >/dev/null 2>&1 || [ -x "$pm2_bin" ]; then
+    "$pm2_bin" delete domain-for-sale 2>/dev/null || true
+    "$pm2_bin" save 2>/dev/null || true
     log "已停止并移除 pm2 进程 domain-for-sale"
   else
     warn "未检测到 pm2，跳过"
@@ -204,8 +209,25 @@ ensure_node() {
 }
 ensure_pm2() {
   if command -v pm2 >/dev/null 2>&1; then log "pm2 已安装"; return; fi
+  # npm 全局 bin 目录（Node 二进制兜底安装时为 /opt/node-*/bin，通常不在 PATH 中）
+  local npm_bin
+  npm_bin="$(npm prefix -g 2>/dev/null)/bin"
+  if [ -x "$npm_bin/pm2" ]; then
+    ln -sf "$npm_bin/pm2" /usr/local/bin/pm2 && hash -r
+    command -v pm2 >/dev/null 2>&1 && { log "pm2 已可用（已链接 $npm_bin/pm2 → /usr/local/bin/pm2）"; return; }
+  fi
   info "全局安装 pm2…"
   npm i -g pm2
+  hash -r
+  if ! command -v pm2 >/dev/null 2>&1 && [ -x "$npm_bin/pm2" ]; then
+    ln -sf "$npm_bin/pm2" /usr/local/bin/pm2 && hash -r
+  fi
+  if ! command -v pm2 >/dev/null 2>&1; then
+    err "pm2 安装后仍不可用。请手动执行："
+    err "  npm i -g pm2 && ln -sf \"\$(npm prefix -g)/bin/pm2\" /usr/local/bin/pm2"
+    exit 1
+  fi
+  log "pm2 安装完成"
 }
 ensure_acme() {
   if [ -x "$HOME/.acme.sh/acme.sh" ]; then log "acme.sh 已安装"; return; fi
@@ -451,6 +473,16 @@ ECOSYSTEM
 sed -i "s|__APP_DIR__|$APP_DIR|g; s|__PORT__|$PORT|g; s|__DATA_FILE__|$DATA_FILE|g; s|__ADMIN_PASSWORD__|$ADMIN_PASSWORD|g; s|__SITE_DOMAIN__|$SITE_DOMAIN|g; s|__SEED__|$SEED|g" "$APP_DIR/ecosystem.config.cjs"
 
 # ----------------------------- 启动应用（pm2）-----------------------------
+# 端口占用预警：若 ${PORT} 被非 Node 进程占用（如 1Panel/OpenResty 站点误用该端口），提前告知
+if command -v ss >/dev/null 2>&1; then
+  port_owner="$(ss -tlnp 2>/dev/null | grep ":${PORT} " || true)"
+  if [ -n "$port_owner" ] && ! echo "$port_owner" | grep -qi "node"; then
+    warn "端口 ${PORT} 已被非 Node 进程占用："
+    warn "$port_owner"
+    warn "若这是 1Panel/OpenResty 某站点的监听端口，请删除/改该站点端口；"
+    warn "或用其他端口重新部署：PORT=8790 bash deploy-server.sh --non-interactive"
+  fi
+fi
 log "启动 / 重启应用（pm2）…"
 ( cd "$APP_DIR" && pm2 delete domain-for-sale 2>/dev/null || true )
 ( cd "$APP_DIR" && pm2 start ecosystem.config.cjs --update-env )
