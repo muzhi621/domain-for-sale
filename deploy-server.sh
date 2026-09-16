@@ -36,6 +36,7 @@ SEED="${SEED:-1}"                               # 首跑写入示例域名：1=�
 ACME_EMAIL="${ACME_EMAIL:-}"                    # Let's Encrypt 注册邮箱（留空用 admin@<SITE_DOMAIN>）
 PURGE="${PURGE:-0}"                             # 卸载时是否连应用目录一起删：1=删, 0=保留
 PROXY_MODE="${PROXY_MODE:-nginx}"              # nginx(默认,适配 1Panel) | caddy
+UPSTREAM_HOST="${UPSTREAM_HOST:-}"             # 反代目标主机；留空自动探测（1Panel 的 OpenResty 是 Docker 容器时须用宿主机网关 IP，否则 502）
 ACTION="install"
 NON_INTERACTIVE=0
 for _a in "$@"; do
@@ -103,6 +104,22 @@ reload_web() {
   else
     warn "未检测到 web 服务（openresty/nginx），请手动加载反代配置。"
   fi
+}
+
+detect_upstream_host() {
+  # 若 1Panel/OpenResty 跑在 Docker 容器里（1Panel 默认），容器内的 127.0.0.1 是容器自身，
+  # 反代到 127.0.0.1:<PORT> 会 502；须改用宿主机 docker0 网关 IP（应用需监听 0.0.0.0）。
+  [ -n "$UPSTREAM_HOST" ] && return
+  if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | grep -qi openresty; then
+    local gw; gw=$(ip -4 addr show docker0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+    if [ -n "$gw" ]; then
+      UPSTREAM_HOST="$gw"
+      warn "检测到 OpenResty 运行在 Docker 容器中（1Panel 默认），反代目标自动改用宿主机网关 ${UPSTREAM_HOST}:${PORT}。"
+      warn "容器内 127.0.0.1 不可达宿主机，这正是 1Panel 反代报 502 Bad Gateway 的常见原因。"
+      return
+    fi
+  fi
+  UPSTREAM_HOST="127.0.0.1"
 }
 
 # ----------------------------- 卸载模式 -----------------------------
@@ -329,7 +346,7 @@ gen_nginx_conf() {
 #      目标 URL 填 127.0.0.1:${PORT}（host:port，不带 http://），证书用 1Panel 申请。
 
 upstream domain_for_sale {
-    server 127.0.0.1:${PORT};
+    server ${UPSTREAM_HOST}:${PORT};
     keepalive 32;
 }
 
@@ -373,6 +390,7 @@ NGINX
 if [ "$ACTION" = "cert" ]; then
   ensure_curl
   ensure_acme
+  detect_upstream_host
   do_cert
   exit 0
 fi
@@ -442,6 +460,7 @@ if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
 fi
 
 # ----------------------------- 生成反代配置（nginx / OpenResty 模式）-----------------------------
+detect_upstream_host
 if [ "$PROXY_MODE" = "nginx" ]; then
   # 先生成「仅含 80 反代 + acme 验证」的占位配置，证书由 cert 子命令补全 443 块
   mkdir -p "$APP_DIR/nginx"
@@ -453,7 +472,7 @@ if [ "$PROXY_MODE" = "nginx" ]; then
 #      目标 URL 填 127.0.0.1:${PORT}（host:port，不带 http://），证书用 1Panel 申请。
 
 upstream domain_for_sale {
-    server 127.0.0.1:${PORT};
+    server ${UPSTREAM_HOST}:${PORT};
     keepalive 32;
 }
 
@@ -521,7 +540,8 @@ echo -e "${C_Y}HTTPS 接入（二选一）：${C_N}"
 echo "   A) 脚本自动管证书：登录后台导入 30 个域名 → 运行  bash deploy-server.sh cert"
 echo "      （一次性为全部域名签发一张 SAN 证书，自动写入 OpenResty 并启用 443）"
 echo "   B) 1Panel 面板管证书：在「网站 → 创建网站 → 反向代理」逐个建站点，"
-echo "      目标 URL 填  ${C_B}127.0.0.1:${PORT}${C_N}（host:port，不带 http://），证书用 1Panel 申请。"
+echo "      目标 URL 填  ${C_B}${UPSTREAM_HOST}:${PORT}${C_N}（host:port，不带 http://），证书用 1Panel 申请。"
+echo "      ⚠️ OpenResty 在 Docker 容器内时（1Panel 默认）127.0.0.1 不可达宿主机 → 502，必须填 ${UPSTREAM_HOST}。"
 echo "      ⚠️ 上次报错 invalid port in upstream 正是因为目标 URL 填了 http://127.0.0.1:${PORT}。"
 echo
 echo -e "${C_Y}导入域名：登录后台 → 批量导入 CSV（模板见 ${APP_DIR}/data/domains.sample.csv）。${C_N}"
