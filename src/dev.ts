@@ -4,7 +4,7 @@ import { app } from './index'
 import { createDevKV, Storage, DomainRecord } from './storage'
 
 const devKV = createDevKV()
-const env = { DOMAIN_KV: devKV, ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'admin123' }
+const env = { DOMAIN_KV: devKV, ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'admin123', SITE_DOMAIN: process.env.SITE_DOMAIN || 'localhost' }
 
 async function seed() {
   const s = new Storage(devKV)

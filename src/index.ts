@@ -3,11 +3,14 @@ import { Storage, DomainRecord, InquiryRecord, KVLike } from './storage'
 import { parseCSV } from './csv'
 import * as views from './views'
 
-type Bindings = { DOMAIN_KV: KVLike; ADMIN_PASSWORD?: string }
+type Bindings = { DOMAIN_KV: KVLike; ADMIN_PASSWORD?: string; SITE_DOMAIN?: string }
 const app = new Hono<{ Bindings: Bindings }>()
 
 const storage = (c: any): Storage => new Storage(c.env.DOMAIN_KV)
 const adminPassword = (c: any): string => c.env.ADMIN_PASSWORD || 'admin123'
+// 平台分配的默认域名（如 xxx.pages.dev / xxx.edgeone.app），作为所有自定义域名的 CNAME 目标
+const siteDomain = (c: any): string => (c.env.SITE_DOMAIN || '').trim()
+const reqHost = (c: any): string => (c.req.header('host') || '').split(':')[0].toLowerCase()
 
 function newToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, '0')).join('')
@@ -102,13 +105,13 @@ app.get('/admin/logout', async (c) => {
 app.get('/admin', async (c) => {
   const s = storage(c)
   const [domains, inquiries] = await Promise.all([s.listDomains(), s.listInquiries()])
-  return c.html(views.adminOverview(domains, inquiries))
+  return c.html(views.adminOverview(domains, inquiries, siteDomain(c), reqHost(c)))
 })
 
 // ---------- 域名列表 ----------
 app.get('/admin/domains', async (c) => {
   const domains = await storage(c).listDomains()
-  return c.html(views.adminDomains(domains))
+  return c.html(views.adminDomains(domains, siteDomain(c), reqHost(c)))
 })
 
 // ---------- 新增 / 编辑表单 ----------
@@ -228,6 +231,14 @@ app.post('/admin/inquiries/:id/status', async (c) => {
   const status = String(b.status || 'new')
   await storage(c).setInquiryStatus(id, status)
   return c.redirect('/admin/inquiries')
+})
+
+// ---------- 按域名预览（无需 DNS：/d/example.com） ----------
+app.get('/d/:domain', async (c) => {
+  const domain = decodeURIComponent(c.req.param('domain')).toLowerCase().trim()
+  const rec = await storage(c).getDomain(domain)
+  if (!rec) return c.html(views.notFound(domain), 404)
+  return c.html(views.showcase(rec))
 })
 
 // ---------- 访客展示页（按 Host 路由，兜底全捕获） ----------
