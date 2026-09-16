@@ -86,6 +86,15 @@ git push -u origin main
 
 如果你有独立服务器，这是最省心的方案：**一个 Node 进程服务全部域名**，每个域名通过 **A 记录**（根域名）或 **CNAME**（子域名）指向服务器即可，不需要 Cloudflare/EdgeOne 的「自定义域名」配置，根域名也能直接用（CNAME 在根域被大多数 DNS 禁止的问题不复存在）。
 
+> **一键部署脚本**：仓库内 `deploy-server.sh` 已封装「克隆代码 → 安装 Node/Caddy/pm2 → 配置文件存储 → 启动服务 → 配置 Caddy 按需 TLS」全流程。在服务器上以 root 执行：
+> ```bash
+> # 交互式（会提示后台密码）：
+> bash deploy-server.sh
+> # 或无人值守（用环境变量 / 默认值）：
+> bash deploy-server.sh --non-interactive
+> ```
+> 首次运行会自动生成后台密码并打印；重跑即可拉取最新代码并热重启。详见脚本顶部注释（可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值）。
+
 程序内置「文件存储模式」：数据落在本机 JSON 文件（无需 KV）。
 
 **① 服务器运行**
