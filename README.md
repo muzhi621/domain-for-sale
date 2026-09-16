@@ -94,6 +94,13 @@ git push -u origin main
 > bash deploy-server.sh --non-interactive
 > ```
 > 首次运行会自动生成后台密码并打印；重跑即可拉取最新代码并热重启。详见脚本顶部注释（可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值）。
+>
+> 卸载（停 pm2 + Caddy，释放 80/443 端口）：
+> ```bash
+> bash deploy-server.sh uninstall          # 保留代码与数据
+> bash deploy-server.sh uninstall --purge  # 连应用目录一起删（含 data/data.json）
+> ```
+> ⚠️ 若服务器是 aaPanel / 已装 nginx，脚本安装 Caddy 会与 nginx 抢 80/443。aaPanel 环境请改用 nginx 反代（目标 `127.0.0.1:8788`，不带 `http://`），不要装 Caddy。
 
 程序内置「文件存储模式」：数据落在本机 JSON 文件（无需 KV）。
 

@@ -9,6 +9,8 @@
 # 用法：
 #   bash deploy-server.sh                      # 交互式（提示后台密码）
 #   bash deploy-server.sh --non-interactive    # 无人值守，用默认值/环境变量
+#   bash deploy-server.sh uninstall            # 一键卸载（停 pm2 + Caddy，释放 80/443）
+#   bash deploy-server.sh uninstall --purge    # 卸载并彻底删除应用目录（含 data/data.json）
 #
 # 可用环境变量覆盖默认值：
 #   REPO_URL  APP_DIR  PORT  DATA_FILE  ADMIN_PASSWORD  SITE_DOMAIN  SEED  ACME_EMAIL
@@ -24,8 +26,16 @@ ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"            # 留空则自动生成（首次
 SITE_DOMAIN="${SITE_DOMAIN:-}"                  # 后台显示的「访问目标」，留空则尝试取公网 IP
 SEED="${SEED:-1}"                               # 首跑写入示例域名：1=写, 0=不写
 ACME_EMAIL="${ACME_EMAIL:-}"                    # Let's Encrypt 注册邮箱（留空用 admin@<SITE_DOMAIN>）
+PURGE="${PURGE:-0}"                             # 卸载时是否连应用目录一起删：1=删, 0=保留
+ACTION="install"
 NON_INTERACTIVE=0
-[ "${1:-}" = "--non-interactive" ] && NON_INTERACTIVE=1
+for _a in "$@"; do
+  case "$_a" in
+    --non-interactive) NON_INTERACTIVE=1 ;;
+    --purge)          PURGE=1 ;;
+    --uninstall|uninstall) ACTION="uninstall" ;;
+  esac
+done
 
 # ----------------------------- 颜色 / 日志 -----------------------------
 if [ -t 1 ]; then
@@ -46,6 +56,53 @@ run_apt()  { apt-get update -y && apt-get install -y "$@"; }
 if [ "$(id -u)" -ne 0 ]; then
   err "请使用 root 运行本脚本（需要安装系统软件 / 写 /etc/caddy）。"
   exit 1
+fi
+
+# ----------------------------- 卸载模式 -----------------------------
+do_uninstall() {
+  log "开始卸载 domain-for-sale 部署…"
+  # 1) 停止 pm2 进程
+  if command -v pm2 >/dev/null 2>&1; then
+    pm2 delete domain-for-sale 2>/dev/null || true
+    pm2 save 2>/dev/null || true
+    log "已停止并移除 pm2 进程 domain-for-sale"
+  else
+    warn "未检测到 pm2，跳过"
+  fi
+  # 2) 停止 Caddy（释放 80/443，交还给 nginx / aaPanel）
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] && systemctl list-unit-files caddy.service 2>/dev/null | grep -q caddy; then
+    systemctl stop caddy 2>/dev/null && log "已停止 caddy (systemd)" || true
+    systemctl disable caddy 2>/dev/null || true
+  fi
+  if command -v caddy >/dev/null 2>&1; then
+    pkill -f 'caddy run' 2>/dev/null && log "已结束 caddy 进程" || true
+  fi
+  # 3) 移除生成的服务配置（备份 Caddyfile）
+  rm -f "$APP_DIR/ecosystem.config.cjs" && log "已删除 $APP_DIR/ecosystem.config.cjs" || true
+  if [ -f /etc/caddy/Caddyfile ]; then
+    cp -f /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak.$(date +%s)" 2>/dev/null || true
+    rm -f /etc/caddy/Caddyfile && log "已备份并移除 /etc/caddy/Caddyfile" || true
+  fi
+  # 4) 是否删除整个应用目录（含数据 data/data.json）
+  if [ "$PURGE" = "1" ]; then
+    rm -rf "$APP_DIR" && log "已彻底删除应用目录 $APP_DIR（含 data/data.json 数据）" || true
+  else
+    warn "保留应用目录 $APP_DIR（代码与数据未删）；加 --purge 可彻底删除。"
+  fi
+  # 5) 若本机是 nginx（aaPanel），重启让出后的 80/443 生效
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] && systemctl list-unit-files nginx.service 2>/dev/null | grep -q nginx; then
+    systemctl restart nginx 2>/dev/null && log "已重启 nginx（80/443 现由 nginx 占用）" || true
+  fi
+  echo
+  echo -e "${C_G}卸载完成。${C_N}"
+  echo "  · pm2 进程已停止；Caddy 已停止并让出 80/443 端口。"
+  echo "  · 若使用 aaPanel/nginx，现在 80/443 已空闲，可在 aaPanel 重启 nginx。"
+  echo "  · 注意：aaPanel 站点的反向代理「目标URL」仍需改为 127.0.0.1:${PORT}（不带 http://）才能正常反代。"
+  echo "  · 重新部署：bash deploy-server.sh"
+}
+if [ "$ACTION" = "uninstall" ]; then
+  do_uninstall
+  exit 0
 fi
 
 # ----------------------------- 安装器 -----------------------------
@@ -84,6 +141,10 @@ ensure_node() {
 
 ensure_caddy() {
   if command -v caddy >/dev/null 2>&1; then log "Caddy $(caddy version 2>/dev/null | awk '{print $1}') 已安装"; return; fi
+  if command -v nginx >/dev/null 2>&1; then
+    warn "检测到本机已安装/运行 nginx（如 aaPanel），Caddy 会与 nginx 争抢 80/443 端口。"
+    warn "aaPanel 环境下建议改用 nginx 反代到 127.0.0.1:${PORT}，不要安装 Caddy（或先停掉 nginx）。"
+  fi
   info "安装 Caddy…"
   if has_apt; then
     apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
