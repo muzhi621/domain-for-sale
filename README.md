@@ -86,21 +86,23 @@ git push -u origin main
 
 如果你有独立服务器，这是最省心的方案：**一个 Node 进程服务全部域名**，每个域名通过 **A 记录**（根域名）或 **CNAME**（子域名）指向服务器即可，不需要 Cloudflare/EdgeOne 的「自定义域名」配置，根域名也能直接用（CNAME 在根域被大多数 DNS 禁止的问题不复存在）。
 
-> **一键部署脚本**：仓库内 `deploy-server.sh` 已封装「克隆代码 → 安装 Node/Caddy/pm2 → 配置文件存储 → 启动服务 → 配置 Caddy 按需 TLS」全流程。在服务器上以 root 执行：
+> **一键部署脚本（1Panel / OpenResty / nginx 适配）**：仓库内 `deploy-server.sh` 已封装「克隆代码 → 安装 Node/pm2 + acme.sh → 配置文件存储 → 启动服务 → 生成 OpenResty 反代配置 → 批量签发 HTTPS 证书」全流程，**不安装 Caddy**，避免与 1Panel/OpenResty 抢 80/443。在服务器上以 root 执行：
 > ```bash
 > # 交互式（会提示后台密码）：
 > bash deploy-server.sh
 > # 或无人值守（用环境变量 / 默认值）：
 > bash deploy-server.sh --non-interactive
+> # 导入 30 个域名后，一键签发 HTTPS 证书（acme.sh 批量 SAN，自动写入 conf.d 并 reload）：
+> bash deploy-server.sh cert
 > ```
-> 首次运行会自动生成后台密码并打印；重跑即可拉取最新代码并热重启。详见脚本顶部注释（可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值）。
+> 首次运行会自动生成后台密码并打印；重跑即拉取最新代码并热重启。详见脚本顶部注释（可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值）。
 >
-> 卸载（停 pm2 + Caddy，释放 80/443 端口）：
+> 卸载（停 pm2 + 清 Caddy 残留 + 释放 80/443 端口）：
 > ```bash
 > bash deploy-server.sh uninstall          # 保留代码与数据
 > bash deploy-server.sh uninstall --purge  # 连应用目录一起删（含 data/data.json）
 > ```
-> ⚠️ 若服务器是 aaPanel / 已装 nginx，脚本安装 Caddy 会与 nginx 抢 80/443。aaPanel 环境请改用 nginx 反代（目标 `127.0.0.1:8788`，不带 `http://`），不要装 Caddy。
+> ⚠️ 1Panel / 宝塔面板「反向代理」的**目标 URL** 填 `127.0.0.1:8788`（host:port，**不带 `http://`**）—— 带 `http://` 会触发 `invalid port in upstream` 报错（你之前遇到的就是它）。
 
 程序内置「文件存储模式」：数据落在本机 JSON 文件（无需 KV）。
 
@@ -123,33 +125,32 @@ npm run start
 - 子域名（如 `shop.example.com`）：DNS 添加 **CNAME** 记录 → 你的服务器域名。
 - 30 个域名都指向同一台服务器；程序按访问的 `Host` 自动展示对应域名资料。
 
-**③ HTTPS（推荐 Caddy，自动签发证书，且支持多个域名）**
+**③ HTTPS（1Panel / OpenResty + acme.sh 批量证书）**
 
-`Caddyfile`（把 30 个域名都列上，Caddy 自动申请/续期 Let's Encrypt）：
+两种方式任选其一：
 
-```caddyfile
-example.com, ai-tools.cn, hbhtcm.cn, other1.cn, other2.com {
-    reverse_proxy 127.0.0.1:8788
+- **方式 A · 脚本自动管证书（推荐）**：在后台导入 30 个域名后，运行 `bash deploy-server.sh cert`。脚本用 acme.sh 为全部域名签发**一张 Let's Encrypt SAN 证书**（单张上限 100 域，30 域无压力），自动写入 OpenResty 的 `conf.d/domain-for-sale.conf` 并 reload，立即启用 443 HTTPS，无需逐个登记；续期由 acme.sh 自动完成。
+- **方式 B · 1Panel 面板管证书**：在 1Panel「网站 → 创建网站 → 反向代理」逐个建站点，**目标 URL 填 `127.0.0.1:8788`（不带 `http://`）**，证书用 1Panel 自带的 Let's Encrypt 申请（30 个域名重复 30 次）。
+
+`deploy-server.sh` 已内置生成好的反代配置（无需手敲），核心结构如下：
+
+```nginx
+upstream domain_for_sale { server 127.0.0.1:8788; keepalive 32; }
+server {
+    listen 443 ssl;
+    server_name a.com b.cn c.net;          # 全部域名，空格分隔（一张 SAN 证书覆盖）
+    ssl_certificate     /root/.acme.sh/a.com/fullchain.cer;
+    ssl_certificate_key /root/.acme.sh/a.com/a.com.key;
+    location / {
+        proxy_pass http://domain_for_sale;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
-或用**按需 TLS**（域名特别多、不想逐个写）：
-
-```caddyfile
-{
-    on_demand_tls {
-        ask http://127.0.0.1:8788/api/domain-exists
-    }
-}
-:443 {
-    tls {
-        on_demand
-    }
-    reverse_proxy 127.0.0.1:8788
-}
-```
-
-> 若用 Nginx，则需要为每个域名建 `server` 块（或泛域名）反代到 `127.0.0.1:8788`，SSL 证书手动配置；Caddy 在「多域名自动 HTTPS」上更省事。
+> 反向代理的 `proxy_pass` 必须写成 `http://127.0.0.1:8788`（带协议）；但 1Panel 面板「目标 URL」输入框只接受 `127.0.0.1:8788`（host:port），两者并不矛盾——前者是 nginx 指令语法，后者是面板的简化填写框。
 
 **④ 常驻进程**：用 `pm2` 或 systemd 保持后台运行。
 
