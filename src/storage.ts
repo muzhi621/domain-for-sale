@@ -18,6 +18,7 @@ export interface DomainRecord {
   contacts?: Record<string, string>
   meta_title?: string
   meta_description?: string
+  theme?: string // 展示页主题 id，见 themes.ts（classic/minimal/tech/elegant/neon）
   sort_order?: number
   created_at?: string
   updated_at?: string

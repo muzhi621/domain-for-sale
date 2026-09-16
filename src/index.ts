@@ -99,7 +99,8 @@ app.post('/admin/login', async (c) => {
   const token = newToken()
   await storage(c).setSession(token, 'admin')
   const res = c.redirect('/admin')
-  res.headers.append('Set-Cookie', serializeCookie('admin_session', token, { maxAge: 86400, httpOnly: true, path: '/', sameSite: 'Lax', secure: true }))
+  const isHttps = c.req.header('x-forwarded-proto') === 'https' || c.req.url.startsWith('https')
+  res.headers.append('Set-Cookie', serializeCookie('admin_session', token, { maxAge: 86400, httpOnly: true, path: '/', sameSite: 'Lax', secure: isHttps }))
   return res
 })
 app.get('/admin/logout', async (c) => {
@@ -152,6 +153,7 @@ function bodyToDomain(b: any): DomainRecord {
     contacts: b.contacts ? safeJson(b.contacts) : {},
     meta_title: b.meta_title || '',
     meta_description: b.meta_description || '',
+    theme: b.theme || 'classic',
     sort_order: b.sort_order ? Number(b.sort_order) : 0,
   }
   return d
