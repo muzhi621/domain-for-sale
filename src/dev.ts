@@ -1,13 +1,33 @@
-// 本地开发入口：用内存 KV 启动 Hono，便于无需 Cloudflare/EdgeOne 账号即可自测。
+// 服务入口（本地开发 + 独立服务器部署共用）
+// - 默认（无 DATA_FILE）：内存 KV，自动写入示例域名，用于本地自测
+// - 设置 DATA_FILE=data/data.json：文件持久化 KV，用于独立服务器生产部署（无 Cloudflare/EdgeOne KV）
 import { serve } from '@hono/node-server'
 import { app } from './index'
-import { createDevKV, Storage, DomainRecord } from './storage'
+import { createDevKV, createFileKV, Storage, DomainRecord } from './storage'
 
-const devKV = createDevKV()
-const env = { DOMAIN_KV: devKV, ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'admin123', SITE_DOMAIN: process.env.SITE_DOMAIN || 'localhost' }
+const DATA_FILE = process.env.DATA_FILE || ''
+const useFileKV = !!DATA_FILE
+
+const kv = useFileKV ? createFileKV(DATA_FILE) : createDevKV()
+const env = { DOMAIN_KV: kv, ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'admin123', SITE_DOMAIN: process.env.SITE_DOMAIN || 'localhost' }
 
 async function seed() {
-  const s = new Storage(devKV)
+  if (useFileKV) {
+    // 生产模式：仅在数据文件为空且 SEED=1 时写入示例
+    const s = new Storage(kv)
+    const existing = await s.listDomains()
+    if (existing.length === 0 && process.env.SEED === '1') {
+      await seedSamples(s)
+    } else {
+      console.log(`[file-kv] 已从 ${DATA_FILE} 加载 ${existing.length} 个域名记录`)
+    }
+    return
+  }
+  // 本地开发：总是写入示例
+  await seedSamples(new Storage(kv))
+}
+
+async function seedSamples(s: Storage) {
   const samples: DomainRecord[] = [
     {
       domain: 'example-sale.com',
@@ -46,9 +66,10 @@ seed().then(() => {
       port,
     },
     (info) => {
-      console.log(`\n本地服务已启动: http://localhost:${info.port}`)
+      console.log(`\n服务已启动: http://localhost:${info.port}  (存储模式: ${useFileKV ? `文件 ${DATA_FILE}` : '内存(本地开发)'})`)
       console.log(`  展示页测试:  curl -H "Host: example-sale.com" http://localhost:${info.port}/`)
-      console.log(`  后台登录:    http://localhost:${info.port}/admin   (密码默认 admin123)\n`)
+      console.log(`  预览地址:    http://localhost:${info.port}/d/example-sale.com`)
+      console.log(`  后台登录:    http://localhost:${info.port}/admin   (密码: ADMIN_PASSWORD 环境变量，默认 admin123)\n`)
     },
   )
 })

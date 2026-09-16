@@ -144,3 +144,46 @@ export function createDevKV(): KVLike {
     },
   }
 }
+
+// 独立服务器部署用：文件持久化 KV（无 Cloudflare/EdgeOne 时数据落到本地 JSON）
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+
+export function createFileKV(filePath: string): KVLike {
+  const file = path.resolve(filePath)
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const m = new Map<string, string>()
+  try {
+    if (fs.existsSync(file)) {
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, string>
+      for (const [k, v] of Object.entries(raw)) m.set(k, String(v))
+    }
+  } catch (e) {
+    console.error('[file-kv] 读取数据文件失败，将以空数据启动:', e)
+  }
+  const save = () => {
+    try {
+      fs.writeFileSync(file + '.tmp', JSON.stringify(Object.fromEntries(m), null, 2))
+      fs.renameSync(file + '.tmp', file)
+    } catch (e) {
+      console.error('[file-kv] 写入数据文件失败:', e)
+    }
+  }
+  return {
+    async get(k) {
+      return m.has(k) ? m.get(k)! : null
+    },
+    async put(k, v) {
+      m.set(k, v)
+      save()
+    },
+    async delete(k) {
+      m.delete(k)
+      save()
+    },
+    async list(opts) {
+      const prefix = opts?.prefix || ''
+      return { keys: [...m.keys()].filter((x) => x.startsWith(prefix)).map((name) => ({ name })) }
+    },
+  }
+}

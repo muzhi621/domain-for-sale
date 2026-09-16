@@ -6,6 +6,7 @@
   "description": "多域名出售展示系统：一套 Hono 应用，按 Host 路由展示页，后台管理 + 批量导入，可部署到 Cloudflare Pages 与 EdgeOne Pages。",
   "scripts": {
     "dev": "tsx src/dev.ts",
+    "start": "tsx src/dev.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
     "deploy:cf": "wrangler pages deploy . --project-name domain-for-sale --branch main",

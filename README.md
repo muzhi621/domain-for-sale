@@ -82,6 +82,69 @@ git push -u origin main
 
 > 两个平台可同时接入同一批域名（各加自定义域），但同一域名同一时刻只能指向其中一个平台。建议先在一个平台跑通，再决定主用哪家。
 
+### 4. 部署到自己的独立服务器（推荐：彻底绕开 CNAME / 根域名限制）
+
+如果你有独立服务器，这是最省心的方案：**一个 Node 进程服务全部域名**，每个域名通过 **A 记录**（根域名）或 **CNAME**（子域名）指向服务器即可，不需要 Cloudflare/EdgeOne 的「自定义域名」配置，根域名也能直接用（CNAME 在根域被大多数 DNS 禁止的问题不复存在）。
+
+程序内置「文件存储模式」：数据落在本机 JSON 文件（无需 KV）。
+
+**① 服务器运行**
+
+```bash
+npm install
+# 生产模式：数据持久化到 data/data.json（无 KV 时用）
+DATA_FILE=data/data.json ADMIN_PASSWORD=你的后台密码 \
+SITE_DOMAIN=你的服务器域名 PORT=8788 \
+npm run start
+```
+
+- 首次为空时先 `SEED=1` 跑一次写示例，再用后台 `/admin` 导入 30 个域名（导入后数据自动存进 `data/data.json`，重启不丢）。
+- 后台 `/admin` 的「CNAME 目标」在自部署场景即等于 **你的服务器对外域名/IP**（访客其实用 A 记录指向它），照常复制使用即可。
+
+**② 域名解析（每个域名独立访问）**
+
+- 根域名（如 `hbhtcm.cn`）：DNS 添加 **A 记录** `@` → 服务器公网 IP。
+- 子域名（如 `shop.example.com`）：DNS 添加 **CNAME** 记录 → 你的服务器域名。
+- 30 个域名都指向同一台服务器；程序按访问的 `Host` 自动展示对应域名资料。
+
+**③ HTTPS（推荐 Caddy，自动签发证书，且支持多个域名）**
+
+`Caddyfile`（把 30 个域名都列上，Caddy 自动申请/续期 Let's Encrypt）：
+
+```caddyfile
+example.com, ai-tools.cn, hbhtcm.cn, other1.cn, other2.com {
+    reverse_proxy 127.0.0.1:8788
+}
+```
+
+或用**按需 TLS**（域名特别多、不想逐个写）：
+
+```caddyfile
+{
+    on_demand_tls {
+        ask http://127.0.0.1:8788/api/domain-exists
+    }
+}
+:443 {
+    tls {
+        on_demand
+    }
+    reverse_proxy 127.0.0.1:8788
+}
+```
+
+> 若用 Nginx，则需要为每个域名建 `server` 块（或泛域名）反代到 `127.0.0.1:8788`，SSL 证书手动配置；Caddy 在「多域名自动 HTTPS」上更省事。
+
+**④ 常驻进程**：用 `pm2` 或 systemd 保持后台运行。
+
+```bash
+npm i -g pm2
+pm2 start "DATA_FILE=data/data.json ADMIN_PASSWORD=xxx npm run start" --name domain-for-sale
+pm2 save && pm2 startup
+```
+
+> 自部署与 CF/EdgeOne 部署共用同一份代码与同一套 Host 路由逻辑，只是存储从 KV 换成文件。想切换回边缘平台时，去掉 `DATA_FILE` 环境变量、在平台绑定 `DOMAIN_KV` 即可。
+
 ## 数据字段（CSV 表头）
 
 `domain,price,currency,min_offer,status,category,description,tags,registrar,expires_at,buy_now_url,contact_email,contact_phone,contacts,meta_title,meta_description`

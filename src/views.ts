@@ -49,7 +49,7 @@ h2:first-of-type{margin-top:6px}
 .badge.reserved{background:var(--gold-soft);color:var(--warn)}
 .badge.sold{background:var(--bad-soft);color:var(--bad)}
 .price-box{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:16px 0}
-.price{font-size:34px;font-weight:800;color:var(--ink);font-family:var(--serif);letter-spacing:-.01em}
+.price{font-size:34px;font-weight:800;color:var(--ink);font-family:var(--sans);font-variant-numeric:lining-nums;font-feature-settings:"lnum" 1;letter-spacing:-.01em}
 .price .cur{font-size:18px;font-weight:700;margin-right:5px;color:var(--gold)}
 .price .min{display:block;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px;font-family:var(--sans)}
 .desc{white-space:pre-wrap;color:var(--ink-2);font-size:16px}
@@ -81,7 +81,7 @@ input[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--bad)
 .contacts a{color:var(--ink);font-weight:600}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:16px 0 22px}
 .stats div{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
-.stats b{display:block;font-size:26px;color:var(--gold);line-height:1.1;font-family:var(--serif)}
+.stats b{display:block;font-size:26px;color:var(--gold);line-height:1.1;font-family:var(--sans);font-variant-numeric:lining-nums}
 table{width:100%;border-collapse:separate;border-spacing:0;margin-top:14px;font-size:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
 th{background:var(--surface-2);color:var(--ink-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
@@ -227,7 +227,7 @@ export function adminOverview(domains: DomainRecord[], inquiries: InquiryRecord[
 
 export function adminDomains(domains: DomainRecord[], siteDomain = '', host = ''): string {
   const cnameBanner = siteDomain
-    ? `<div class="cname-banner"><b>CNAME 目标（所有域名共用）：</b> <code>${esc(siteDomain)}</code> <button class="btn copy sm" onclick="copyText('${esc(siteDomain)}', this)">复制</button><div class="hint" style="margin-top:8px">为「每个域名」在 DNS 添加 CNAME → 上述目标；再在平台控制台添加自定义域名（自动 SSL）。下表「访问地址」无需 DNS 即可预览。</div></div>`
+    ? `<div class="cname-banner"><b>CNAME 目标（所有域名共用）：</b> <code>${esc(siteDomain)}</code> <button class="btn copy sm" onclick="copyText('${esc(siteDomain)}', this)">复制</button><div class="hint" style="margin-top:8px">为「每个域名」在 DNS 添加 CNAME → 上述目标；再在平台控制台添加自定义域名（自动 SSL）。下表「访问地址」无需 DNS 即可预览。<br>⚠️ 注意：① CNAME 记录值只填<b>纯域名</b>（如 <code>xxx.pages.dev</code>），不要带 <code>https://</code> 或末尾斜杠；② <b>根域名</b>（如 <code>hbhtcm.cn</code>）多数 DNS 服务商不允许直接 CNAME，可改用「显性 URL 转发」到 <code>/d/域名</code> 预览地址，或把 DNS 迁到 Cloudflare 用 CNAME 扁平化。</div></div>`
     : `<div class="cname-banner warn"><b>未设置 SITE_DOMAIN</b><div class="hint" style="margin-top:6px">请在部署平台添加环境变量 <code>SITE_DOMAIN</code>，值为你的平台默认域名（如 <code>domain-for-sale.pages.dev</code> 或 <code>xxx.edgeone.app</code>），保存后重新部署，这里会显示每个域名的 CNAME 目标。</div></div>`
   const rows = domains
     .map((d) => {

@@ -64,6 +64,15 @@ app.use('/admin/*', async (c, next) => {
   await next()
 })
 
+// ---------- 公开：Caddy on-demand TLS 校验（域名存在才签发证书） ----------
+app.get('/api/domain-exists', async (c) => {
+  const host = (c.req.query('domain') || c.req.header('host') || '').split(':')[0].toLowerCase().trim()
+  if (!host) return c.body(null, 403)
+  const rec = await storage(c).getDomain(host)
+  if (!rec) return c.body(null, 403)
+  return c.text('ok')
+})
+
 // ---------- 公开：提交询价 ----------
 app.post('/api/inquiry', async (c) => {
   const b: any = await c.req.parseBody()
