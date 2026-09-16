@@ -189,14 +189,17 @@ ensure_curl() {
   has_apt && run_apt curl || (has_dnf && (command -v dnf >/dev/null && dnf install -y curl || yum install -y curl))
 }
 ensure_node() {
-  if command -v node >/dev/null 2>&1; then
+  # 注意：必须 node 和 npm 同时可用才算满足（部分系统装了 node 却没有 npm，
+  # 会导致后续 `npm i -g pm2`、`npm install` 全部静默失败）
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     local v; v=$(node -v | sed 's/v//; s/\..*//')
-    if [ "${v:-0}" -ge 18 ]; then log "Node $(node -v) 已满足要求(>=18)"; return; fi
+    if [ "${v:-0}" -ge 18 ]; then log "Node $(node -v) + npm 已满足要求(>=18)"; return; fi
   fi
   info "安装 Node.js 20 LTS…"
   if has_apt; then
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     run_apt nodejs
+    if ! command -v npm >/dev/null 2>&1; then run_apt npm; fi
   else
     local tmp; tmp=$(mktemp -d)
     curl -fsSL "https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
