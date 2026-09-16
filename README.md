@@ -8,7 +8,7 @@
 
 ## 功能
 
-- 访客端：每个域名独立的出售页（按 Host 路由），含 SEO meta、询价表单。
+- 访客端：每个域名独立的出售页（按 Host 路由），含 SEO meta、询价表单。UI 采用 Premium 黑金设计系统（玻璃卡片、衬线展示标题、内联 SVG 图标），并内置可访问询价表单（行内错误 + 错误汇总 + 键盘焦点）、响应式与 `prefers-reduced-motion` / 暗色模式支持。
 - **按域名预览地址**：访问 `https://<站点>/d/<域名>` 即可无需配置 DNS 单独预览某个域名的展示页（如 `https://your.pages.dev/d/example.com`）。
 - **统一管理后台**：`/admin` 登录、域名列表/新增/编辑/删除、批量导入（CSV）、询价管理；域名列表为每个域名显示「访问地址」与一键复制的 **CNAME 目标**。
 - 存储：KV（Cloudflare KV 与 EdgeOne KV 通用，绑定变量名 `DOMAIN_KV`）。30 个域名完全够用。

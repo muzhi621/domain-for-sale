@@ -1,64 +1,112 @@
 import { DomainRecord, InquiryRecord } from './storage'
 
+// ===== Design tokens (from ui-ux-pro-max design system: Premium black + gold) =====
 const STYLE = `
-:root{--bg:#eef1f8;--card:#ffffff;--ink:#1e293b;--muted:#64748b;--line:#e8edf5;--brand:#6d28d9;--brand2:#9333ea;--accent:#e11d48;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}
+:root{
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F7F6F3;
+  --ink:#1C1917; --ink-2:#44403C; --muted:#78716C;
+  --line:#E7E5E4; --line-strong:#D6D3D1;
+  --gold:#A16207; --gold-2:#CA8A04; --gold-soft:#FEF6E7; --gold-line:#FDE9C2;
+  --ok:#15803D; --ok-soft:#ECFDF3; --warn:#B45309; --bad:#B91C1C; --bad-soft:#FEF2F2;
+  --ring:rgba(161,98,7,.32);
+  --radius:18px; --radius-sm:12px;
+  --shadow:0 18px 50px -20px rgba(28,25,23,.28);
+  --serif:'Cormorant Garamond',Georgia,'Songti SC','Noto Serif SC',serif;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0C0A09; --surface:#1B1714; --surface-2:#221C18;
+    --ink:#FAFAF9; --ink-2:#D6D3D1; --muted:#A8A29E;
+    --line:#2C2620; --line-strong:#3A322A;
+    --gold:#E0B24A; --gold-2:#FACC15; --gold-soft:#2A2113; --gold-line:#4A3A1C;
+    --ok:#4ADE80; --ok-soft:#0F2417; --bad:#F87171; --bad-soft:#2A1414;
+    --ring:rgba(224,178,74,.35);
+    --shadow:0 18px 50px -20px rgba(0,0,0,.6);
+  }
+}
 *{box-sizing:border-box}
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:linear-gradient(180deg,#f3f0ff 0%,var(--bg) 240px);color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased}
-a{color:var(--brand);text-decoration:none}
-.card{max-width:760px;margin:40px auto;background:var(--card);border-radius:18px;padding:34px;box-shadow:0 10px 40px rgba(76,29,149,.08);border:1px solid var(--line)}
-.card.admin{max-width:1040px;padding:30px}
-.topbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:18px}
-.topbar h1{font-size:26px;margin:0;background:linear-gradient(90deg,var(--brand),var(--brand2));-webkit-background-clip:text;background-clip:text;color:transparent}
-h1.domain{font-size:40px;margin:0;word-break:break-all;letter-spacing:-.5px}
-h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:26px 0 10px}
-h2:first-of-type{margin-top:8px}
-.cat{display:inline-block;background:#f3e8ff;color:var(--brand2);padding:3px 12px;border-radius:999px;font-size:13px;font-weight:600}
-.price-box{display:flex;flex-wrap:wrap;align-items:center;gap:16px;background:#faf5ff;border:1px solid #f0e1ff;border-radius:14px;padding:18px 20px;margin:14px 0}
-.price{font-size:30px;font-weight:800;color:var(--accent)}
-.price .cur{font-size:18px;font-weight:700;margin-right:4px}
-.price .min{display:block;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
-.desc{white-space:pre-wrap;color:#334155;font-size:16px}
-.badge{display:inline-block;padding:4px 13px;border-radius:999px;font-size:13px;font-weight:700;margin-bottom:10px}
-.badge.for_sale{background:#dcfce7;color:#15803d}
-.badge.reserved{background:#fef9c3;color:#a16207}
-.badge.sold{background:#fee2e2;color:#b91c1c}
-.btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(90deg,var(--brand),var(--brand2));color:#fff;border:none;padding:11px 20px;border-radius:11px;font-size:15px;font-weight:600;cursor:pointer;margin:4px 8px 4px 0;box-shadow:0 4px 14px rgba(109,40,217,.25)}
-.btn:hover{filter:brightness(1.05)}
-.btn.buy{background:linear-gradient(90deg,#e11d48,#f43f5e)}
-.btn.ghost{background:#eef2f7;color:#475569;box-shadow:none}
-.btn.sm{padding:6px 12px;font-size:13px;margin:0;box-shadow:none}
-.btn.copy{background:#eef2f7;color:#475569;box-shadow:none}
-.form{display:flex;flex-direction:column;gap:14px;margin-top:8px}
-.form label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:600;color:#475569}
-.form input,.form textarea,.form select{width:100%;padding:11px 13px;border:1px solid #d7deea;border-radius:11px;font-size:15px;font-family:inherit;background:#fff;color:var(--ink)}
-.form input:focus,.form textarea:focus,.form select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(109,40,217,.12)}
-.form textarea{min-height:90px;resize:vertical}
-.contacts{list-style:none;padding:0;margin:0;display:grid;gap:8px}
-.contacts li{padding:10px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:11px}
-.contacts a{color:var(--brand)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:var(--sans);background:
+  radial-gradient(1200px 600px at 50% -10%, rgba(161,98,7,.10), transparent 60%),
+  var(--bg);
+  color:var(--ink);line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--gold);text-decoration:none}
+.card{max-width:780px;margin:48px auto;background:rgba(255,255,255,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:var(--radius);padding:38px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+@media (prefers-color-scheme: dark){.card{background:rgba(27,23,20,.8)}}
+.card::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:linear-gradient(90deg,var(--gold),var(--gold-2))}
+.card.admin{max-width:1080px;padding:30px}
+.topbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:20px}
+.topbar h1{font-size:24px;margin:0;font-weight:700;letter-spacing:-.02em}
+h1.domain{font-family:var(--serif);font-size:clamp(38px,7vw,64px);line-height:1.04;margin:6px 0 0;font-weight:600;letter-spacing:-.01em;word-break:break-all}
+h1.domain::after{content:"";display:block;width:64px;height:3px;margin-top:14px;background:linear-gradient(90deg,var(--gold),var(--gold-2));border-radius:2px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:28px 0 10px;font-weight:700}
+h2:first-of-type{margin-top:6px}
+.cat{display:inline-block;margin-top:12px;background:var(--gold-soft);color:var(--gold);border:1px solid var(--gold-line);padding:4px 14px;border-radius:999px;font-size:13px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:999px;font-size:13px;font-weight:700}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.badge.for_sale{background:var(--ok-soft);color:var(--ok)}
+.badge.reserved{background:var(--gold-soft);color:var(--warn)}
+.badge.sold{background:var(--bad-soft);color:var(--bad)}
+.price-box{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px 22px;margin:16px 0}
+.price{font-size:34px;font-weight:800;color:var(--ink);font-family:var(--serif);letter-spacing:-.01em}
+.price .cur{font-size:18px;font-weight:700;margin-right:5px;color:var(--gold)}
+.price .min{display:block;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px;font-family:var(--sans)}
+.desc{white-space:pre-wrap;color:var(--ink-2);font-size:16px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--gold),var(--gold-2));color:#fff;border:none;padding:12px 22px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;margin:4px 8px 4px 0;box-shadow:0 8px 20px -8px rgba(161,98,7,.6);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+.btn:hover{transform:translateY(-1px);box-shadow:0 12px 26px -8px rgba(161,98,7,.7);filter:brightness(1.04)}
+.btn:active{transform:translateY(0)}
+.btn.buy{background:linear-gradient(135deg,#1C1917,#44403C)}
+.btn.buy:hover{filter:brightness(1.15)}
+.btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-strong);box-shadow:none}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.sm{padding:7px 13px;font-size:13px;margin:0;box-shadow:none}
+.btn.copy{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line-strong);box-shadow:none}
+a.btn{text-decoration:none}
+:focus-visible{outline:3px solid var(--ring);outline-offset:2px;border-radius:6px}
+.form{display:flex;flex-direction:column;gap:14px;margin-top:10px}
+.form .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form label{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.form input,.form textarea,.form select{width:100%;padding:12px 14px;border:1px solid var(--line-strong);border-radius:12px;font-size:15px;font-family:inherit;background:var(--surface);color:var(--ink);transition:border-color .18s ease,box-shadow .18s ease}
+.form input:focus,.form textarea:focus,.form select:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--ring)}
+.form textarea{min-height:96px;resize:vertical}
+.form .req{color:var(--bad)}
+.field-err{color:var(--bad);font-size:13px;font-weight:600;margin-top:2px}
+input[aria-invalid="true"],textarea[aria-invalid="true"]{border-color:var(--bad)}
+.summary{background:var(--bad-soft);border:1px solid #fecaca;color:var(--bad);padding:12px 16px;border-radius:12px;font-weight:600;margin-bottom:6px}
+@media (prefers-color-scheme: dark){.summary{border-color:#7f1d1d}}
+.contacts{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.contacts li{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px}
+.contacts svg{flex:none;color:var(--gold)}
+.contacts a{color:var(--ink);font-weight:600}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:16px 0 22px}
-.stats div{background:linear-gradient(180deg,#fff,#faf7ff);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
-.stats b{display:block;font-size:26px;color:var(--brand);line-height:1.1}
-table{width:100%;border-collapse:separate;border-spacing:0;margin-top:14px;font-size:14px;overflow:hidden;border-radius:12px}
-th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
-th{background:#f5f3ff;color:#5b21b6;font-weight:700;font-size:13px}
-tbody tr:hover{background:#faf9ff}
+.stats div{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+.stats b{display:block;font-size:26px;color:var(--gold);line-height:1.1;font-family:var(--serif)}
+table{width:100%;border-collapse:separate;border-spacing:0;margin-top:14px;font-size:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{background:var(--surface-2);color:var(--ink-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
 .row-actions a,.row-actions button{margin-right:6px}
-.link{color:var(--brand);font-weight:600}
-.hint{color:#94a3b8;font-size:13px;line-height:1.5}
-.err{color:var(--bad);background:#fef2f2;border:1px solid #fecaca;padding:9px 13px;border-radius:10px;display:inline-block;font-weight:600}
+.link{color:var(--gold);font-weight:600}
+.hint{color:var(--muted);font-size:13px;line-height:1.55}
+.err{color:var(--bad);background:var(--bad-soft);border:1px solid #fecaca;padding:10px 14px;border-radius:10px;display:inline-block;font-weight:600}
 #msg{font-size:14px;color:var(--ok);font-weight:600;margin-top:8px;min-height:18px}
-.cname-banner{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:14px 16px;margin-bottom:18px}
-.cname-banner b{color:#15803d}
-.cname-banner code{background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:3px 8px;font-size:13px;word-break:break-all}
+.cname-banner{background:var(--gold-soft);border:1px solid var(--gold-line);border-radius:14px;padding:15px 17px;margin-bottom:18px}
+.cname-banner b{color:var(--gold)}
+.cname-banner code{background:var(--surface);border:1px solid var(--gold-line);border-radius:8px;padding:3px 9px;font-size:13px;word-break:break-all}
+.cname-banner.warn{background:#FFF7ED;border-color:#FED7AA}
+.cname-banner.warn b{color:#C2410C}
 .addr{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.addr .pill{background:#f1f5f9;border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:13px}
-footer.foot{text-align:center;color:#94a3b8;font-size:12px;margin:26px 0 8px}
-@media(max-width:560px){.card{padding:22px;margin:18px 12px}.price-box{flex-direction:column;align-items:flex-start}h1.domain{font-size:30px}table{font-size:13px}th,td{padding:8px}td.addr{display:block}}
+.addr .pill{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:13px;word-break:break-all}
+footer.foot{text-align:center;color:var(--muted);font-size:12px;margin:28px 0 10px}
+@media (max-width:640px){.card{padding:22px;margin:18px 12px}.form .grid2{grid-template-columns:1fr}table{font-size:13px}th,td{padding:9px 8px}td.addr{display:block}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 `
 
 function layout(title: string, body: string, head = ''): string {
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${head}</head><body>${body}<footer class="foot">域名出售展示系统 · 基于 Hono 驱动 Cloudflare / EdgeOne Pages</footer></body></html>`
+  const fonts = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">`
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${fonts}${head}<style>${STYLE}</style></head><body>${body}<footer class="foot">域名出售展示系统 · 基于 Hono 驱动 Cloudflare / EdgeOne Pages</footer></body></html>`
 }
 function esc(s: string): string {
   return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]!))
@@ -71,6 +119,12 @@ function enc(s: string): string {
 }
 function previewUrl(host: string, domain: string): string {
   return `https://${host || 'localhost'}/d/${enc(domain)}`
+}
+const ICON = {
+  mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  phone: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg>',
+  chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  link: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>',
 }
 const COPY_JS = `<script>
 function copyText(t, btn){
@@ -88,11 +142,11 @@ export function showcase(d: DomainRecord): string {
     ? `<div class="price"><span class="cur">${esc(d.currency || 'CNY')}</span>${Number(d.price).toLocaleString()}${d.min_offer ? `<span class="min">最低可接受 ${Number(d.min_offer).toLocaleString()}</span>` : ''}</div>`
     : `<div class="price">价格面议</div>`
   const contacts: string[] = []
-  if (d.contact_email) contacts.push(`<li>邮箱：<a href="mailto:${esc(d.contact_email)}">${esc(d.contact_email)}</a></li>`)
-  if (d.contact_phone) contacts.push(`<li>电话：${esc(d.contact_phone)}</li>`)
-  if (d.contacts) for (const [k, v] of Object.entries(d.contacts)) contacts.push(`<li>${esc(k)}：${esc(v)}</li>`)
+  if (d.contact_email) contacts.push(`<li>${ICON.mail}<span>邮箱：<a href="mailto:${esc(d.contact_email)}">${esc(d.contact_email)}</a></span></li>`)
+  if (d.contact_phone) contacts.push(`<li>${ICON.phone}<span>电话：${esc(d.contact_phone)}</span></li>`)
+  if (d.contacts) for (const [k, v] of Object.entries(d.contacts)) contacts.push(`<li>${ICON.chat}<span>${esc(k)}：${esc(v)}</span></li>`)
   const contactHtml = contacts.length ? `<ul class="contacts">${contacts.join('')}</ul>` : ''
-  const buy = d.buy_now_url ? `<a class="btn buy" href="${esc(d.buy_now_url)}" target="_blank" rel="noopener">立即购买 ↗</a>` : ''
+  const buy = d.buy_now_url ? `<a class="btn buy" href="${esc(d.buy_now_url)}" target="_blank" rel="noopener">立即购买 ${ICON.link}</a>` : ''
   const body = `
   <main class="card showcase">
     <header>
@@ -105,26 +159,41 @@ export function showcase(d: DomainRecord): string {
       ${buy}
     </section>
     <section><h2>域名简介</h2><p class="desc">${esc(d.description || '暂无介绍')}</p></section>
-    <section><h2>联系方式</h2>${contactHtml || '<p class="hint">卖家暂未提供联系方式，请通过下方询价。</p>'}</section>
+    <section><h2>联系方式</h2>${contactHtml || '<p class="hint">卖家暂未提供联系方式，请通过下方表单询价。</p>'}</section>
     <section class="inquiry"><h2>询价 / 留言</h2>
-      <form id="inq" class="form">
+      <form id="inq" class="form" novalidate>
+        <div id="form-summary" class="summary" role="alert" tabindex="-1" hidden></div>
+        <div class="grid2">
+          <label for="name">你的称呼 <span class="req">*</span><input id="name" name="name" placeholder="如何称呼你" required aria-describedby="name-err"><span id="name-err" class="field-err" aria-live="polite"></span></label>
+          <label for="email">邮箱 <span class="req">*</span><input id="email" name="email" type="email" placeholder="you@example.com" required aria-describedby="email-err"><span id="email-err" class="field-err" aria-live="polite"></span></label>
+        </div>
+        <label for="phone">电话（选填）<input id="phone" name="phone" placeholder="电话"></label>
+        <label for="message">留言（选填）<textarea id="message" name="message" placeholder="想了解的细节"></textarea></label>
         <input type="hidden" name="domain" value="${esc(d.domain)}">
-        <label>你的称呼<input name="name" placeholder="如何称呼你" required></label>
-        <label>邮箱<input name="email" type="email" placeholder="邮箱" required></label>
-        <label>电话<input name="phone" placeholder="电话（选填）"></label>
-        <label>留言<textarea name="message" placeholder="想了解的细节（选填）"></textarea></label>
-        <button class="btn" type="submit">提交询价</button>
+        <button class="btn" type="submit">提交询价 ${ICON.chat}</button>
         <div id="msg"></div>
       </form>
     </section>
     <script>
       document.getElementById('inq').addEventListener('submit', async function(e){
         e.preventDefault();
-        var f=new FormData(e.target);
-        var r=await fetch('/api/inquiry',{method:'POST',body:f});
+        var f=e.target, ok=true, errs=[];
+        var name=f.name.value.trim(), email=f.email.value.trim();
+        var ne=document.getElementById('name-err'), ee=document.getElementById('email-err');
+        ne.textContent=''; ee.textContent=''; f.name.removeAttribute('aria-invalid'); f.email.removeAttribute('aria-invalid');
+        if(!name){ ok=false; ne.textContent='请填写称呼'; f.name.setAttribute('aria-invalid','true'); errs.push('称呼'); }
+        if(!email){ ok=false; ee.textContent='请填写邮箱'; f.email.setAttribute('aria-invalid','true'); errs.push('邮箱'); }
+        else if(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)){ ok=false; ee.textContent='邮箱格式不正确'; f.email.setAttribute('aria-invalid','true'); errs.push('邮箱格式'); }
+        if(!ok){
+          var s=document.getElementById('form-summary');
+          s.hidden=false; s.textContent='请修正以下问题：'+errs.join('、'); s.focus();
+          return;
+        }
+        var fd=new FormData(f);
+        var r=await fetch('/api/inquiry',{method:'POST',body:fd});
         var j=await r.json();
         document.getElementById('msg').textContent=j.message||j.error||'';
-        if(j.ok) e.target.reset();
+        if(j.ok){ f.reset(); document.getElementById('form-summary').hidden=true; }
       });
     </script>
   </main>`
@@ -132,13 +201,13 @@ export function showcase(d: DomainRecord): string {
 }
 
 export function notFound(host: string): string {
-  return layout(host || '域名', `<main class="card"><h1 class="domain">${esc(host || '该域名')}</h1><p>该域名暂无出售信息，或页面即将上线。</p><p class="hint">如果你是站长，请在后台 /admin 添加该域名的展示资料。</p></main>`)
+  return layout(host || '域名', `<main class="card"><header><h1 class="domain">${esc(host || '该域名')}</h1></header><p>该域名暂无出售信息，或页面即将上线。</p><p class="hint">如果你是站长，请在后台 /admin 添加该域名的展示资料。</p></main>`)
 }
 
 export function adminLogin(error = ''): string {
   return layout(
     '后台登录',
-    `<main class="card admin"><div class="topbar"><h1>域名出售 · 后台</h1></div>${error ? `<p class="err">${esc(error)}</p>` : ''}<form method="post" action="/admin/login" class="form"><label>管理员密码<input type="password" name="password" placeholder="ADMIN_PASSWORD" required></label><button class="btn" type="submit">登录</button></form><p class="hint">密码在部署平台的环境变量 ADMIN_PASSWORD 中设置（本地默认 admin123）。</p></main>`,
+    `<main class="card admin"><div class="topbar"><h1>域名出售 · 后台</h1></div>${error ? `<p class="err">${esc(error)}</p>` : ''}<form method="post" action="/admin/login" class="form"><label for="pw">管理员密码<input id="pw" type="password" name="password" placeholder="ADMIN_PASSWORD" required></label><button class="btn" type="submit">登录</button></form><p class="hint">密码在部署平台的环境变量 ADMIN_PASSWORD 中设置（本地默认 admin123）。</p></main>`,
   )
 }
 
@@ -159,7 +228,7 @@ export function adminOverview(domains: DomainRecord[], inquiries: InquiryRecord[
 export function adminDomains(domains: DomainRecord[], siteDomain = '', host = ''): string {
   const cnameBanner = siteDomain
     ? `<div class="cname-banner"><b>CNAME 目标（所有域名共用）：</b> <code>${esc(siteDomain)}</code> <button class="btn copy sm" onclick="copyText('${esc(siteDomain)}', this)">复制</button><div class="hint" style="margin-top:8px">为「每个域名」在 DNS 添加 CNAME → 上述目标；再在平台控制台添加自定义域名（自动 SSL）。下表「访问地址」无需 DNS 即可预览。</div></div>`
-    : `<div class="cname-banner" style="background:#fff7ed;border-color:#fed7aa"><b style="color:#c2410c">未设置 SITE_DOMAIN</b><div class="hint" style="margin-top:6px">请在部署平台添加环境变量 <code>SITE_DOMAIN</code>，值为你的平台默认域名（如 <code>domain-for-sale.pages.dev</code> 或 <code>xxx.edgeone.app</code>），保存后重新部署，这里会显示每个域名的 CNAME 目标。</div></div>`
+    : `<div class="cname-banner warn"><b>未设置 SITE_DOMAIN</b><div class="hint" style="margin-top:6px">请在部署平台添加环境变量 <code>SITE_DOMAIN</code>，值为你的平台默认域名（如 <code>domain-for-sale.pages.dev</code> 或 <code>xxx.edgeone.app</code>），保存后重新部署，这里会显示每个域名的 CNAME 目标。</div></div>`
   const rows = domains
     .map((d) => {
       const pu = previewUrl(host, d.domain)
@@ -170,7 +239,7 @@ export function adminDomains(domains: DomainRecord[], siteDomain = '', host = ''
         <td>${d.price ? esc(d.currency || 'CNY') + ' ' + Number(d.price).toLocaleString() : '面议'}</td>
         <td><span class="badge ${esc(d.status || 'for_sale')}">${statusLabel(d.status)}</span></td>
         <td class="addr"><a class="link" href="${pu}" target="_blank">预览 ↗</a><span class="pill">${esc(pu)}</span></td>
-        <td class="row-actions"><a class="link" href="/admin/domains/${enc(d.domain)}">编辑</a> ${cnameBtn}<form method="post" action="/admin/domains/${enc(d.domain)}/delete" style="display:inline" onsubmit="return confirm('确认删除 ${esc(d.domain)}？')"><button class="link" style="border:0;background:none;cursor:pointer;color:#dc2626;padding:0;font:inherit">删除</button></form></td>
+        <td class="row-actions"><a class="link" href="/admin/domains/${enc(d.domain)}">编辑</a> ${cnameBtn}<form method="post" action="/admin/domains/${enc(d.domain)}/delete" style="display:inline" onsubmit="return confirm('确认删除 ${esc(d.domain)}？')"><button class="link" style="border:0;background:none;cursor:pointer;color:#b91c1c;padding:0;font:inherit">删除</button></form></td>
       </tr>`
     })
     .join('')
@@ -190,22 +259,15 @@ export function domainForm(d: DomainRecord | null, error = ''): string {
   const contactsJson = d?.contacts ? JSON.stringify(d.contacts) : ''
   const body = `<main class="card admin"><div class="topbar"><h1>${d ? '编辑域名' : '新增域名'}</h1><a class="btn ghost" href="/admin/domains">返回列表</a></div>${error ? `<p class="err">${esc(error)}</p>` : ''}
    <form method="post" action="${action}" class="form">
-     ${field('domain', '域名 *', v('domain'))}
-     ${field('slug', '短标识', v('slug'))}
-     ${field('price', '一口价', v('price'), 'number')}
-     ${field('currency', '货币', v('currency') || 'CNY')}
-     ${field('min_offer', '最低接受价', v('min_offer'), 'number')}
-     ${field('status', '状态 (for_sale / reserved / sold)', v('status') || 'for_sale')}
-     ${field('category', '分类', v('category'))}
-     ${field('registrar', '注册商', v('registrar'))}
-     ${field('expires_at', '到期日', v('expires_at'))}
-     ${field('buy_now_url', '购买链接', v('buy_now_url'))}
-     ${field('contact_email', '联系邮箱', v('contact_email'))}
-     ${field('contact_phone', '联系电话', v('contact_phone'))}
+     <div class="grid2">${field('domain', '域名 *', v('domain'))}${field('slug', '短标识', v('slug'))}</div>
+     <div class="grid2">${field('price', '一口价', v('price'), 'number')}${field('currency', '货币', v('currency') || 'CNY')}</div>
+     <div class="grid2">${field('min_offer', '最低接受价', v('min_offer'), 'number')}${field('status', '状态 (for_sale / reserved / sold)', v('status') || 'for_sale')}</div>
+     <div class="grid2">${field('category', '分类', v('category'))}${field('registrar', '注册商', v('registrar'))}</div>
+     <div class="grid2">${field('expires_at', '到期日', v('expires_at'))}${field('buy_now_url', '购买链接', v('buy_now_url'))}</div>
+     <div class="grid2">${field('contact_email', '联系邮箱', v('contact_email'))}${field('contact_phone', '联系电话', v('contact_phone'))}</div>
      ${field('tags', '标签(逗号分隔)', (d?.tags || []).join(','))}
      ${field('contacts', '其他联系方式 (JSON)', contactsJson)}
-     ${field('meta_title', 'SEO 标题', v('meta_title'))}
-     ${field('meta_description', 'SEO 描述', v('meta_description'))}
+     <div class="grid2">${field('meta_title', 'SEO 标题', v('meta_title'))}${field('meta_description', 'SEO 描述', v('meta_description'))}</div>
      <label>描述<textarea name="description">${esc(v('description'))}</textarea></label>
      <div><button class="btn" type="submit">保存</button> <a class="btn ghost" href="/admin/domains">取消</a></div>
    </form></main>`
