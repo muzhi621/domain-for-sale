@@ -11,6 +11,11 @@ const adminPassword = (c: any): string => c.env.ADMIN_PASSWORD || 'admin123'
 // 平台分配的默认域名（如 xxx.pages.dev / xxx.edgeone.app），作为所有自定义域名的 CNAME 目标
 const siteDomain = (c: any): string => (c.env.SITE_DOMAIN || '').trim()
 const reqHost = (c: any): string => (c.req.header('host') || '').split(':')[0].toLowerCase()
+function clientIp(c: any): string {
+  const xff = c.req.header('x-forwarded-for')
+  if (xff) return xff.split(',')[0].trim()
+  return c.req.header('x-real-ip') || ''
+}
 
 function newToken(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, '0')).join('')
@@ -120,8 +125,10 @@ app.get('/admin', async (c) => {
 
 // ---------- 域名列表 ----------
 app.get('/admin/domains', async (c) => {
-  const domains = await storage(c).listDomains()
-  return c.html(views.adminDomains(domains, siteDomain(c), reqHost(c)))
+  const s = storage(c)
+  const [domains, summaries] = await Promise.all([s.listDomains(), s.visitSummaries()])
+  const vmap = new Map(summaries.map((x) => [x.domain, x]))
+  return c.html(views.adminDomains(domains, siteDomain(c), reqHost(c), vmap))
 })
 
 // ---------- 新增 / 编辑表单 ----------
@@ -244,6 +251,20 @@ app.post('/admin/inquiries/:id/status', async (c) => {
   return c.redirect('/admin/inquiries')
 })
 
+// ---------- 访问记录 ----------
+app.get('/admin/visits', async (c) => {
+  const s = storage(c)
+  const [summaries, recent] = await Promise.all([s.visitSummaries(), s.recentVisits(300)])
+  return c.html(views.adminVisits(summaries, recent, siteDomain(c)))
+})
+app.get('/admin/visits/:domain', async (c) => {
+  const domain = decodeURIComponent(c.req.param('domain')).toLowerCase().trim()
+  const s = storage(c)
+  const [visits, summaries] = await Promise.all([s.listVisits(domain, 500), s.visitSummaries()])
+  const total = summaries.find((x) => x.domain === domain)?.count || visits.length
+  return c.html(views.adminVisitsDomain(domain, visits, total, siteDomain(c)))
+})
+
 // ---------- 按域名预览（无需 DNS：/d/example.com） ----------
 app.get('/d/:domain', async (c) => {
   const domain = decodeURIComponent(c.req.param('domain')).toLowerCase().trim()
@@ -257,6 +278,13 @@ app.get('*', async (c) => {
   const host = (c.req.header('host') || '').split(':')[0].toLowerCase()
   const rec = await storage(c).getDomain(host)
   if (!rec) return c.html(views.notFound(host), 404)
+  // 记录访问（真实访客通过域名打开出售页）
+  await storage(c).addVisit(host, {
+    ip: clientIp(c),
+    ua: c.req.header('user-agent') || '',
+    ref: c.req.header('referer') || '',
+    via: 'host',
+  })
   return c.html(views.showcase(rec))
 })
 

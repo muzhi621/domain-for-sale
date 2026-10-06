@@ -5,3 +5,10 @@ node_modules/
 .DS_Store
 .env
 dist/
+
+# 运行环境与本地数据（不入库）
+runtime/
+.deploy-env
+ecosystem.config.cjs
+data/data.json
+nginx/

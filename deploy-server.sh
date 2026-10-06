@@ -28,6 +28,8 @@ set -uo pipefail
 # ----------------------------- 可配置项（环境变量可覆盖）-----------------------------
 REPO_URL="${REPO_URL:-https://github.com/muzhi621/domain-for-sale.git}"
 APP_DIR="${APP_DIR:-/opt/domain-for-sale}"
+# 注入自包含 runtime 的 bin 到 PATH（重跑脚本时 npm/pm2 可解析）
+[ -d "$APP_DIR/runtime/bin" ] && export PATH="$APP_DIR/runtime/bin:$PATH"
 PORT="${PORT:-8788}"
 DATA_FILE="${DATA_FILE:-data/data.json}"        # 相对 APP_DIR 的路径
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"            # 留空则自动生成（首次运行）
@@ -37,7 +39,7 @@ ACME_EMAIL="${ACME_EMAIL:-}"                    # Let's Encrypt 注册邮箱（�
 PURGE="${PURGE:-0}"                             # 卸载时是否连应用目录一起删：1=删, 0=保留
 PROXY_MODE="${PROXY_MODE:-nginx}"              # nginx(默认,适配 1Panel) | caddy
 UPSTREAM_HOST="${UPSTREAM_HOST:-}"             # 反代目标主机；留空自动探测（1Panel 的 OpenResty 是 Docker 容器时须用宿主机网关 IP，否则 502）
-ACTION="install"
+ACTION=""
 NON_INTERACTIVE=0
 for _a in "$@"; do
   case "$_a" in
@@ -46,10 +48,21 @@ for _a in "$@"; do
     --tls)            PROXY_MODE="caddy" ;;          # 旧参数兼容
     --tls=caddy)      PROXY_MODE="caddy" ;;
     --tls=nginx)      PROXY_MODE="nginx" ;;
-    cert|issue-certs) ACTION="cert" ;;
-    --uninstall|uninstall) ACTION="uninstall" ;;
   esac
 done
+# 第一位置参数作为动作（无参数且是终端则进入菜单，否则默认安装以保持兼容）
+case "${1:-}" in
+  install)           ACTION="install" ;;
+  update)            ACTION="update" ;;
+  passwd|password)   ACTION="passwd" ;;
+  restart)           ACTION="restart" ;;
+  status)            ACTION="status" ;;
+  menu)              ACTION="menu" ;;
+  cert|issue-certs)  ACTION="cert" ;;
+  uninstall|--uninstall) ACTION="uninstall" ;;
+  "")                [ -t 0 ] && ACTION="menu" || ACTION="install" ;;
+  *)                 ACTION="install" ;;            # 未知位置参数一律按安装处理
+esac
 
 # ----------------------------- 颜色 / 日志 -----------------------------
 if [ -t 1 ]; then
@@ -125,15 +138,10 @@ detect_upstream_host() {
 # ----------------------------- 卸载模式 -----------------------------
 do_uninstall() {
   log "开始卸载 domain-for-sale 部署…"
-  # 1) 停止 pm2 进程（pm2 可能不在 PATH，尝试 npm 全局 bin 目录）
-  local pm2_bin="pm2"
-  if ! command -v pm2 >/dev/null 2>&1; then
-    local np_bin; np_bin="$(npm prefix -g 2>/dev/null)/bin"
-    [ -x "$np_bin/pm2" ] && pm2_bin="$np_bin/pm2"
-  fi
-  if command -v "$pm2_bin" >/dev/null 2>&1 || [ -x "$pm2_bin" ]; then
-    "$pm2_bin" delete domain-for-sale 2>/dev/null || true
-    "$pm2_bin" save 2>/dev/null || true
+  # 1) 停止 pm2 进程
+  if command -v pm2 >/dev/null 2>&1; then
+    pm2 delete domain-for-sale 2>/dev/null || true
+    pm2 save 2>/dev/null || true
     log "已停止并移除 pm2 进程 domain-for-sale"
   else
     warn "未检测到 pm2，跳过"
@@ -172,10 +180,6 @@ do_uninstall() {
   echo "  · 若使用 1Panel 面板自建的反向代理站点，目标仍需是 127.0.0.1:${PORT}（不带 http://）。"
   echo "  · 重新部署：bash deploy-server.sh"
 }
-if [ "$ACTION" = "uninstall" ]; then
-  do_uninstall
-  exit 0
-fi
 
 # ----------------------------- 安装器 -----------------------------
 ensure_git() {
@@ -189,17 +193,14 @@ ensure_curl() {
   has_apt && run_apt curl || (has_dnf && (command -v dnf >/dev/null && dnf install -y curl || yum install -y curl))
 }
 ensure_node() {
-  # 注意：必须 node 和 npm 同时可用才算满足（部分系统装了 node 却没有 npm，
-  # 会导致后续 `npm i -g pm2`、`npm install` 全部静默失败）
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+  if command -v node >/dev/null 2>&1; then
     local v; v=$(node -v | sed 's/v//; s/\..*//')
-    if [ "${v:-0}" -ge 18 ]; then log "Node $(node -v) + npm 已满足要求(>=18)"; return; fi
+    if [ "${v:-0}" -ge 18 ]; then log "Node $(node -v) 已满足要求(>=18)"; return; fi
   fi
   info "安装 Node.js 20 LTS…"
   if has_apt; then
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     run_apt nodejs
-    if ! command -v npm >/dev/null 2>&1; then run_apt npm; fi
   else
     local tmp; tmp=$(mktemp -d)
     curl -fsSL "https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
@@ -212,25 +213,8 @@ ensure_node() {
 }
 ensure_pm2() {
   if command -v pm2 >/dev/null 2>&1; then log "pm2 已安装"; return; fi
-  # npm 全局 bin 目录（Node 二进制兜底安装时为 /opt/node-*/bin，通常不在 PATH 中）
-  local npm_bin
-  npm_bin="$(npm prefix -g 2>/dev/null)/bin"
-  if [ -x "$npm_bin/pm2" ]; then
-    ln -sf "$npm_bin/pm2" /usr/local/bin/pm2 && hash -r
-    command -v pm2 >/dev/null 2>&1 && { log "pm2 已可用（已链接 $npm_bin/pm2 → /usr/local/bin/pm2）"; return; }
-  fi
   info "全局安装 pm2…"
   npm i -g pm2
-  hash -r
-  if ! command -v pm2 >/dev/null 2>&1 && [ -x "$npm_bin/pm2" ]; then
-    ln -sf "$npm_bin/pm2" /usr/local/bin/pm2 && hash -r
-  fi
-  if ! command -v pm2 >/dev/null 2>&1; then
-    err "pm2 安装后仍不可用。请手动执行："
-    err "  npm i -g pm2 && ln -sf \"\$(npm prefix -g)/bin/pm2\" /usr/local/bin/pm2"
-    exit 1
-  fi
-  log "pm2 安装完成"
 }
 ensure_acme() {
   if [ -x "$HOME/.acme.sh/acme.sh" ]; then log "acme.sh 已安装"; return; fi
@@ -308,14 +292,7 @@ fi
 if [ -z "$ACME_EMAIL" ]; then
   ACME_EMAIL="admin@${SITE_DOMAIN}"
 fi
-if [ -z "$ADMIN_PASSWORD" ]; then
-  if [ "$NON_INTERACTIVE" = 1 ]; then
-    ADMIN_PASSWORD=$(openssl rand -base64 12 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16 || echo "admin$(date +%s)")
-  else
-    read -r -p "设置后台登录密码（留空自动生成）: " ADMIN_PASSWORD
-    [ -z "$ADMIN_PASSWORD" ] && ADMIN_PASSWORD=$(openssl rand -base64 12 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)
-  fi
-fi
+# 后台密码的交互设置放在 do_install 内（update/passwd 等子命令不在此提示）
 
 # ----------------------------- 证书签发（cert 子命令）-----------------------------
 do_cert() {
@@ -411,14 +388,18 @@ NGINX
   log "已生成 $APP_DIR/nginx/domain-proxy.conf"
 }
 
-# ----------------------------- 开始执行（install / cert）-----------------------------
-if [ "$ACTION" = "cert" ]; then
-  ensure_curl
-  ensure_acme
-  detect_upstream_host
-  do_cert
-  exit 0
-fi
+# ----------------------------- 开始执行（install / cert / 其他子命令，见文末调度）-----------------------------
+
+do_install() {
+  # 交互设置后台密码（仅安装阶段）
+  if [ -z "$ADMIN_PASSWORD" ]; then
+    if [ "$NON_INTERACTIVE" = 1 ]; then
+      ADMIN_PASSWORD=$(openssl rand -base64 12 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16 || echo "admin$(date +%s)")
+    else
+      read -r -p "设置后台登录密码（留空自动生成）: " ADMIN_PASSWORD
+      [ -z "$ADMIN_PASSWORD" ] && ADMIN_PASSWORD=$(openssl rand -base64 12 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16)
+    fi
+  fi
 
 info "部署参数："
 echo "    REPO_URL     = $REPO_URL"
@@ -445,54 +426,14 @@ ensure_pm2
 fetch_repo
 
 info "安装依赖（含 tsx 运行时）…"
-( cd "$APP_DIR" && npm install )
+( cd "$APP_DIR" && npm install --no-audit --no-fund )
 
 # 数据目录
 mkdir -p "$(dirname "$APP_DIR/$DATA_FILE")"
 
-# ----------------------------- 生成 pm2 配置（带环境变量，重启不丢）-----------------------------
-log "生成 pm2 配置：$APP_DIR/ecosystem.config.cjs"
-cat > "$APP_DIR/ecosystem.config.cjs" <<'ECOSYSTEM'
-module.exports = {
-  apps: [{
-    name: 'domain-for-sale',
-    cwd: '__APP_DIR__',
-    script: 'npm',
-    args: 'start',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    env: {
-      NODE_ENV: 'production',
-      PORT: __PORT__,
-      DATA_FILE: '__DATA_FILE__',
-      ADMIN_PASSWORD: '__ADMIN_PASSWORD__',
-      SITE_DOMAIN: '__SITE_DOMAIN__',
-      SEED: '__SEED__'
-    }
-  }]
-}
-ECOSYSTEM
-sed -i "s|__APP_DIR__|$APP_DIR|g; s|__PORT__|$PORT|g; s|__DATA_FILE__|$DATA_FILE|g; s|__ADMIN_PASSWORD__|$ADMIN_PASSWORD|g; s|__SITE_DOMAIN__|$SITE_DOMAIN|g; s|__SEED__|$SEED|g" "$APP_DIR/ecosystem.config.cjs"
-
-# ----------------------------- 启动应用（pm2）-----------------------------
-# 端口占用预警：若 ${PORT} 被非 Node 进程占用（如 1Panel/OpenResty 站点误用该端口），提前告知
-if command -v ss >/dev/null 2>&1; then
-  port_owner="$(ss -tlnp 2>/dev/null | grep ":${PORT} " || true)"
-  if [ -n "$port_owner" ] && ! echo "$port_owner" | grep -qi "node"; then
-    warn "端口 ${PORT} 已被非 Node 进程占用："
-    warn "$port_owner"
-    warn "若这是 1Panel/OpenResty 某站点的监听端口，请删除/改该站点端口；"
-    warn "或用其他端口重新部署：PORT=8790 bash deploy-server.sh --non-interactive"
-  fi
-fi
-log "启动 / 重启应用（pm2）…"
-( cd "$APP_DIR" && pm2 delete domain-for-sale 2>/dev/null || true )
-( cd "$APP_DIR" && pm2 start ecosystem.config.cjs --update-env )
-( cd "$APP_DIR" && pm2 save )
-if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-  pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
-fi
+# ----------------------------- 生成 pm2 配置并启动（复用 write_ecosystem / start_app）-----------------------------
+write_ecosystem
+start_app
 
 # ----------------------------- 生成反代配置（nginx / OpenResty 模式）-----------------------------
 detect_upstream_host
@@ -582,3 +523,157 @@ echo
 echo -e "${C_Y}导入域名：登录后台 → 批量导入 CSV（模板见 ${APP_DIR}/data/domains.sample.csv）。${C_N}"
 echo -e "${C_Y}重新部署：再次运行  bash deploy-server.sh  即可拉取最新代码并热重启。${C_N}"
 echo
+}
+
+# ============================ 可复用函数（子命令） ============================
+
+# 生成 pm2 配置（带环境变量，重启不丢）。依赖全局变量 APP_DIR/PORT/DATA_FILE/ADMIN_PASSWORD/SITE_DOMAIN/SEED
+write_ecosystem() {
+  log "生成 pm2 配置：$APP_DIR/ecosystem.config.cjs"
+  cat > "$APP_DIR/ecosystem.config.cjs" <<'ECOSYSTEM'
+module.exports = {
+  apps: [{
+    name: 'domain-for-sale',
+    cwd: '__APP_DIR__',
+    script: '__APP_DIR__/runtime/bin/node',
+    args: 'node_modules/.bin/tsx src/dev.ts',
+    instances: 1,
+    autorestart: true,
+    watch: false,
+    env: {
+      NODE_ENV: 'production',
+      PORT: __PORT__,
+      DATA_FILE: '__DATA_FILE__',
+      ADMIN_PASSWORD: '__ADMIN_PASSWORD__',
+      SITE_DOMAIN: '__SITE_DOMAIN__',
+      SEED: '__SEED__'
+    }
+  }]
+}
+ECOSYSTEM
+  sed -i "s|__APP_DIR__|$APP_DIR|g; s|__PORT__|$PORT|g; s|__DATA_FILE__|$DATA_FILE|g; s|__ADMIN_PASSWORD__|$ADMIN_PASSWORD|g; s|__SITE_DOMAIN__|$SITE_DOMAIN|g; s|__SEED__|$SEED|g" "$APP_DIR/ecosystem.config.cjs"
+}
+
+# 启动 / 重启应用（pm2）
+start_app() {
+  log "启动 / 重启应用（pm2）…"
+  ( cd "$APP_DIR" && pm2 delete domain-for-sale 2>/dev/null || true )
+  ( cd "$APP_DIR" && pm2 start ecosystem.config.cjs --update-env )
+  ( cd "$APP_DIR" && pm2 save )
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+  fi
+}
+
+# 更新：拉取最新代码并热重启（保持 .deploy-env 中的密码 / 配置不变）
+do_update() {
+  info "更新代码并重启…"
+  fetch_repo
+  ( cd "$APP_DIR" && npm install --no-audit --no-fund ) || warn "npm install 失败（可能 npm 不可用），跳过依赖更新"
+  write_ecosystem
+  start_app
+  do_status
+  log "更新完成。"
+}
+
+# 修改后台密码
+do_passwd() {
+  if [ "$NON_INTERACTIVE" = 1 ] && [ -n "$ADMIN_PASSWORD" ]; then
+    : # 使用环境变量 ADMIN_PASSWORD
+  else
+    read -r -s -p "设置新后台密码: " ADMIN_PASSWORD; echo
+    [ -z "$ADMIN_PASSWORD" ] && { err "密码不能为空"; exit 1; }
+  fi
+  cat > "$APP_DIR/.deploy-env" <<EOF
+ADMIN_PASSWORD='$ADMIN_PASSWORD'
+SITE_DOMAIN='$SITE_DOMAIN'
+PORT='$PORT'
+DATA_FILE='$DATA_FILE'
+REPO_URL='$REPO_URL'
+SEED='$SEED'
+ACME_EMAIL='$ACME_EMAIL'
+PROXY_MODE='$PROXY_MODE'
+EOF
+  log "已写入 $APP_DIR/.deploy-env"
+  write_ecosystem
+  start_app
+  log "后台密码已更新并重启，新密码：${C_Y}${ADMIN_PASSWORD}${C_N}"
+}
+
+# 重启服务
+do_restart() {
+  start_app
+  do_status
+  log "已重启。"
+}
+
+# 查看状态
+do_status() {
+  echo "---- pm2 进程 ----"
+  pm2 status 2>/dev/null | grep -i domain-for-sale || echo "（无 domain-for-sale 进程）"
+  echo "---- 端口 $PORT ----"
+  ( ss -ltnp 2>/dev/null | grep ":$PORT " ) || ( netstat -ltnp 2>/dev/null | grep ":$PORT " ) || echo "端口 $PORT 未监听"
+  echo "---- 本地探活 ----"
+  curl -s -o /dev/null -w "根路径 /      : %{http_code}\n" "http://127.0.0.1:$PORT/" 2>/dev/null || true
+  curl -s -o /dev/null -w "后台 /admin   : %{http_code}\n" "http://127.0.0.1:$PORT/admin" 2>/dev/null || true
+}
+
+# 证书签发流程（整合 ensure + do_cert）
+do_cert_flow() {
+  ensure_curl
+  ensure_acme
+  detect_upstream_host
+  do_cert
+}
+
+# 安装 domain-sale 命令（任意位置执行 domain-sale 重新打开菜单）
+install_menu_cmd() {
+  chmod +x "$APP_DIR/deploy-server.sh"
+  ln -sf "$APP_DIR/deploy-server.sh" /usr/local/bin/domain-sale
+  log "已创建命令：domain-sale（在终端执行 ${C_Y}domain-sale${C_N} 即可打开本管理菜单）"
+}
+
+# 交互菜单
+do_menu() {
+  while true; do
+    echo
+    echo -e "${C_B}============================================${C_N}"
+    echo -e "${C_B}      域名出售系统 · 管理菜单${C_N}"
+    echo -e "${C_B}============================================${C_N}"
+    echo "   1) 部署 / 安装（首次）"
+    echo "   2) 更新（拉取最新代码 + 重启）"
+    echo "   3) 修改后台密码"
+    echo "   4) 重启服务"
+    echo "   5) 查看状态"
+    echo "   6) 申请 HTTPS 证书"
+    echo "   7) 卸载"
+    echo "   0) 退出"
+    echo -n "请选择 [1-7]: "
+    read -r _c || break
+    case "$_c" in
+      1) do_install; install_menu_cmd ;;
+      2) do_update ;;
+      3) do_passwd ;;
+      4) do_restart ;;
+      5) do_status ;;
+      6) do_cert_flow ;;
+      7) do_uninstall ;;
+      0|q|Q) echo "再见。"; break ;;
+      *) echo "无效选择，请重试。" ;;
+    esac
+  done
+}
+
+# ============================ 中央调度 ============================
+case "$ACTION" in
+  uninstall) do_uninstall ;;
+  cert)     do_cert_flow ;;
+  install)  do_install; install_menu_cmd ;;
+  update)   do_update ;;
+  passwd)   do_passwd ;;
+  restart)  do_restart ;;
+  status)   do_status ;;
+  menu)     do_menu ;;
+  *)        do_install; install_menu_cmd ;;
+esac
+

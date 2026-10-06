@@ -35,6 +35,14 @@ export interface InquiryRecord {
   created_at?: string
 }
 
+export interface VisitRecord {
+  ts: string // ISO 时间
+  ip?: string
+  ua?: string
+  ref?: string
+  via?: 'host' | 'preview' // host=访客通过域名访问；preview=后台 /d/ 预览
+}
+
 // Cloudflare / EdgeOne KV 的通用接口形态（get/put/delete/list）
 export interface KVLike {
   get(key: string): Promise<string | null>
@@ -104,6 +112,65 @@ export class Storage {
     const o = JSON.parse(v) as InquiryRecord
     o.status = status
     await this.kv.put('inquiry:' + id, JSON.stringify(o))
+  }
+
+  // ---------- 访问记录 ----------
+  async addVisit(domain: string, v: Partial<VisitRecord> = {}): Promise<void> {
+    const key = 'visit:' + domain.toLowerCase()
+    let arr: VisitRecord[] = []
+    const raw = await this.kv.get(key)
+    if (raw) { try { arr = JSON.parse(raw) as VisitRecord[] } catch {} }
+    arr.push({ ts: new Date().toISOString(), ...v } as VisitRecord)
+    if (arr.length > 1000) arr = arr.slice(-1000) // 上限保护，避免无限增长
+    await this.kv.put(key, JSON.stringify(arr))
+  }
+
+  async listVisits(domain: string, limit = 200): Promise<VisitRecord[]> {
+    const raw = await this.kv.get('visit:' + domain.toLowerCase())
+    if (!raw) return []
+    try {
+      const arr = JSON.parse(raw) as VisitRecord[]
+      return arr.slice(-limit).reverse() // 最新在前
+    } catch { return [] }
+  }
+
+  async countVisits(domain: string): Promise<number> {
+    const raw = await this.kv.get('visit:' + domain.toLowerCase())
+    if (!raw) return 0
+    try { return (JSON.parse(raw) as VisitRecord[]).length } catch { return 0 }
+  }
+
+  // 各域名访问汇总（用于列表/概览），按最近访问时间倒序
+  async visitSummaries(): Promise<{ domain: string; count: number; last?: string }[]> {
+    const { keys } = await this.kv.list({ prefix: 'visit:' })
+    const out: { domain: string; count: number; last?: string }[] = []
+    for (const k of keys) {
+      const raw = await this.kv.get(k.name)
+      if (!raw) continue
+      try {
+        const arr = JSON.parse(raw) as VisitRecord[]
+        out.push({ domain: k.name.slice('visit:'.length), count: arr.length, last: arr[arr.length - 1]?.ts })
+      } catch {}
+    }
+    out.sort((a, b) => (b.last || '').localeCompare(a.last || ''))
+    return out
+  }
+
+  // 全站最近访问（扁平），按时间倒序
+  async recentVisits(limit = 300): Promise<(VisitRecord & { domain: string })[]> {
+    const { keys } = await this.kv.list({ prefix: 'visit:' })
+    const all: (VisitRecord & { domain: string })[] = []
+    for (const k of keys) {
+      const raw = await this.kv.get(k.name)
+      if (!raw) continue
+      try {
+        const arr = JSON.parse(raw) as VisitRecord[]
+        const domain = k.name.slice('visit:'.length)
+        for (const v of arr) all.push({ domain, ...v })
+      } catch {}
+    }
+    all.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''))
+    return all.slice(0, limit)
   }
 
   async setSession(token: string, username: string, ttlSeconds = 86400): Promise<void> {

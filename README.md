@@ -11,6 +11,7 @@
 - 访客端：每个域名独立的出售页（按 Host 路由），含 SEO meta、询价表单。UI 采用 Premium 黑金设计系统（玻璃卡片、衬线展示标题、内联 SVG 图标），并内置可访问询价表单（行内错误 + 错误汇总 + 键盘焦点）、响应式与 `prefers-reduced-motion` / 暗色模式支持。
 - **按域名预览地址**：访问 `https://<站点>/d/<域名>` 即可无需配置 DNS 单独预览某个域名的展示页（如 `https://your.pages.dev/d/example.com`）。
 - **统一管理后台**：`/admin` 登录、域名列表/新增/编辑/删除、批量导入（CSV）、询价管理；域名列表为每个域名显示「访问地址」与一键复制的 **CNAME 目标**。
+- **访问记录**：访客打开任意域名出售页时自动记录时间、IP、来源与入口（访客访问 / 后台预览），后台「访问记录」页可查看每个域名的访问量与明细，并支持从域名列表直接跳转到该域名的访问明细。
 - 存储：KV（Cloudflare KV 与 EdgeOne KV 通用，绑定变量名 `DOMAIN_KV`）。30 个域名完全够用。
 - 安全：后台密码（环境变量 `ADMIN_PASSWORD`，SHA-256 校验）+ 会话 Cookie 鉴权；询价接口防注入。
 
@@ -88,14 +89,16 @@ git push -u origin main
 
 > **一键部署脚本（1Panel / OpenResty / nginx 适配）**：仓库内 `deploy-server.sh` 已封装「克隆代码 → 安装 Node/pm2 + acme.sh → 配置文件存储 → 启动服务 → 生成 OpenResty 反代配置 → 批量签发 HTTPS 证书」全流程，**不安装 Caddy**，避免与 1Panel/OpenResty 抢 80/443。在服务器上以 root 执行：
 > ```bash
-> # 交互式（会提示后台密码）：
-> bash deploy-server.sh
-> # 或无人值守（用环境变量 / 默认值）：
-> bash deploy-server.sh --non-interactive
-> # 导入 30 个域名后，一键签发 HTTPS 证书（acme.sh 批量 SAN，自动写入 conf.d 并 reload）：
-> bash deploy-server.sh cert
+> bash deploy-server.sh            # 进入交互菜单（部署/更新/改密码/重启/状态/证书/卸载）
+> bash deploy-server.sh install    # 直接部署（交互提示后台密码）
+> bash deploy-server.sh update     # 拉取最新代码并热重启（密码不变）
+> bash deploy-server.sh passwd     # 修改后台密码
+> bash deploy-server.sh restart    # 重启服务
+> bash deploy-server.sh status     # 查看进程 / 端口 / 探活
+> bash deploy-server.sh cert       # 批量签发 HTTPS 证书
+> bash deploy-server.sh uninstall [--purge]   # 卸载
 > ```
-> 首次运行会自动生成后台密码并打印；重跑即拉取最新代码并热重启。详见脚本顶部注释（可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值）。
+> 安装完成后脚本会自动创建 `domain-sale` 命令，之后在服务器任意位置执行 `domain-sale` 即可重新打开管理菜单。首次运行会自动生成后台密码并打印；重跑即拉取最新代码并热重启。可用 `REPO_URL`/`APP_DIR`/`PORT`/`ADMIN_PASSWORD`/`SITE_DOMAIN` 等变量覆盖默认值。
 >
 > 卸载（停 pm2 + 清 Caddy 残留 + 释放 80/443 端口）：
 > ```bash
@@ -161,6 +164,67 @@ pm2 save && pm2 startup
 ```
 
 > 自部署与 CF/EdgeOne 部署共用同一份代码与同一套 Host 路由逻辑，只是存储从 KV 换成文件。想切换回边缘平台时，去掉 `DATA_FILE` 环境变量、在平台绑定 `DOMAIN_KV` 即可。
+
+## 服务器管理脚本（deploy-server.sh）
+
+`deploy-server.sh` 既是「一键部署脚本」，也是部署后的**常驻管理入口**。安装完成后会在 `/usr/local/bin/domain-sale` 建立软链，之后输入 `domain-sale` 即可重新打开交互菜单（不需要记住脚本路径）。
+
+### 交互菜单
+
+不带任何参数运行脚本（或执行 `domain-sale`），会进入文字菜单：
+
+```
+=========== 域名出售系统 · 管理菜单 ===========
+   1) 部署 / 安装（首次）
+   2) 更新（拉取最新代码 + 重启）
+   3) 修改后台密码
+   4) 重启服务
+   5) 查看状态
+   6) 申请 HTTPS 证书
+   7) 卸载
+   0) 退出
+请选择 [1-7]:
+```
+
+选 `1` 走首次部署流程（会提示设置后台密码）；其余选项分别执行对应子命令。
+
+### 子命令一览（也可直接命令行调用）
+
+| 命令 | 作用 |
+| --- | --- |
+| `bash deploy-server.sh install` | 首次部署：克隆代码、装 Node/pm2、写文件存储、生成 pm2 配置、启动、生成反代配置，并打印后台密码 |
+| `bash deploy-server.sh update` | 更新：拉取最新代码（`git pull`）+ 重新安装依赖 + 重启服务，**保持 `.deploy-env` 中的密码 / 配置不变** |
+| `bash deploy-server.sh passwd` | 修改后台密码：交互输入新密码 → 写回 `.deploy-env` 与 pm2 配置 → 重启生效 |
+| `bash deploy-server.sh restart` | 仅重启服务（重新加载 ecossystem 配置） |
+| `bash deploy-server.sh status` | 查看 pm2 进程、端口监听、本地探活（根路径 / 后台 的 HTTP 状态码） |
+| `bash deploy-server.sh cert` | 批量签发 HTTPS 证书（acme.sh 一张 SAN 证书覆盖全部域名） |
+| `bash deploy-server.sh uninstall` | 卸载：停 pm2、移除反代配置、释放 80/443（保留代码与数据） |
+| `bash deploy-server.sh uninstall --purge` | 彻底卸载：连应用目录一起删除（含 `data/data.json`） |
+
+> 无人值守可用 `bash deploy-server.sh install --non-interactive`；所有可配置项（`REPO_URL`/`APP_DIR`/`PORT`/`DATA_FILE`/`ADMIN_PASSWORD`/`SITE_DOMAIN`/`SEED`/`ACME_EMAIL`/`PROXY_MODE`/`UPSTREAM_HOST`）均可用环境变量覆盖。
+
+### 改密码的两种方式
+
+1. **菜单 / 子命令（推荐）**：`domain-sale` → 选 `3`，或 `bash deploy-server.sh passwd`，输入新密码即生效（已自动写回配置并重启）。
+2. **手动**：编辑 `/opt/domain-for-sale/.deploy-env` 的 `ADMIN_PASSWORD`，再 `bash deploy-server.sh restart`。
+   ⚠️ 不要用 `pm2 restart --update-env` 单独重启——固化在进程里的环境变量不会刷新；务必用 `restart` 子命令（内部会 `pm2 delete` + `pm2 start`）。
+
+### 访问记录（访客统计）
+
+访客通过任意域名打开出售页（按 `Host` 路由）时，系统自动记录一条访问：时间、IP、来源（Referer）、入口（访客访问 / 后台预览）。后台「访问记录」页（`/admin/visits`）展示：
+
+- 总访问量、有访问的域名数、最近一次访问时间；
+- 各域名访问量汇总表（点击进入单域名明细）；
+- 最近 100 条访问流水（域名 / 时间 / IP / 来源 / 入口）。
+
+数据随域名记录一起落在 `data/data.json`，重启不丢；单域名访问记录上限 1000 条（滚动保留最新）。
+
+### 常见排错
+
+- **站点打不开 / 502**：应用进程是否在跑？`bash deploy-server.sh status` 看端口；若进程没了，跑 `restart`。
+- **重跑脚本后访问不了**：旧版脚本用 `npm start` 拉起，但本机 `npm` 可能不在 PATH；现版已改为用自包含 runtime 的 `node` 绝对路径直接运行 tsx，并注入 `runtime/bin` 到 PATH，重跑不再翻车。
+- **1Panel/宝塔「反向代理」目标 URL**：填 `127.0.0.1:8788`（host:port，**不带 `http://`**），带 `http://` 会触发 `invalid port in upstream`。
+- **OpenResty 在 Docker 容器内（1Panel 默认）**：容器内 `127.0.0.1` 不可达宿主机，反代会 502；脚本已自动探测 docker0 网关作为反代目标（`UPSTREAM_HOST`）。
 
 ## 数据字段（CSV 表头）
 

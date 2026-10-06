@@ -1,4 +1,4 @@
-import { DomainRecord, InquiryRecord } from './storage'
+import { DomainRecord, InquiryRecord, VisitRecord } from './storage'
 import { esc, enc, ICON, layout, foot, adminShell, badge, stat, alertBox, empty } from './ui'
 import { getTheme, themeOptions } from './themes'
 
@@ -176,6 +176,7 @@ export function adminOverview(domains: DomainRecord[], inquiries: InquiryRecord[
         <a class="btn" href="/admin/domains/new">${ICON.plus} 新增域名</a>
         <a class="btn" href="/admin/import">${ICON.upload} 批量导入</a>
         <a class="btn ghost" href="/admin/inquiries">${ICON.inbox} 询价（${inquiries.length}）</a>
+        <a class="btn ghost" href="/admin/visits">${ICON.eye} 访问记录</a>
       </div>
     </div>
     <div class="glass panel panel-tight">
@@ -193,14 +194,16 @@ export function adminOverview(domains: DomainRecord[], inquiries: InquiryRecord[
   return adminShell('overview', inner, { title: '概览', sub: '域名资产与询价总览' })
 }
 
-export function adminDomains(domains: DomainRecord[], siteDomain = '', host = ''): string {
+export function adminDomains(domains: DomainRecord[], siteDomain = '', host = '', visits?: Map<string, { domain: string; count: number; last?: string }>): string {
   const rows = domains.map((d) => {
     const pu = previewUrl(host, d.domain)
+    const v = visits?.get(d.domain)
     return `<tr>
       <td data-label="域名"><b>${esc(d.domain)}</b></td>
       <td data-label="分类">${esc(d.category || '—')}</td>
       <td data-label="价格" class="num">${money(d.price, d.currency)}</td>
       <td data-label="状态">${badge(d.status)}</td>
+      <td data-label="访问量">${v && v.count ? `<a class="chip" href="/admin/visits/${enc(d.domain)}">${v.count} 次</a>` : '0'}</td>
       <td data-label="访问地址"><a class="chip" href="${pu}" target="_blank" rel="noopener">预览 ${ICON.link}</a></td>
       <td data-label="操作" class="row-actions">
         <a class="icon-btn" href="/admin/domains/${enc(d.domain)}">${ICON.edit} 编辑</a>
@@ -220,7 +223,7 @@ export function adminDomains(domains: DomainRecord[], siteDomain = '', host = ''
       : alertBox('warn', '<div><b>未设置 SITE_DOMAIN</b> —— 请添加环境变量后重新部署，这里会显示解析目标。</div>')}
     <div class="glass panel panel-tight">
       ${domains.length
-        ? `<div class="table-wrap"><table><thead><tr><th>域名</th><th>分类</th><th>价格</th><th>状态</th><th>访问地址</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        ? `<div class="table-wrap"><table><thead><tr><th>域名</th><th>分类</th><th>价格</th><th>状态</th><th>访问量</th><th>访问地址</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : empty(ICON.globe, '暂无域名', '点击「新增域名」或「批量导入」开始')}
     </div>${COPY_JS}`
   return adminShell('domains', inner, {
@@ -337,5 +340,78 @@ export function adminInquiries(inquiries: InquiryRecord[], domainMap: Map<string
   return adminShell('inquiries', inner, {
     title: '询价管理',
     sub: `共 ${inquiries.length} 条询价记录`,
+  })
+}
+
+// ============================================================
+// 访问记录
+// ============================================================
+export function adminVisits(summaries: { domain: string; count: number; last?: string }[], recent: (VisitRecord & { domain: string })[], siteDomain = ''): string {
+  const total = summaries.reduce((a, b) => a + b.count, 0)
+  const viaChip = (v?: string) => v === 'preview'
+    ? '<span class="chip">后台预览</span>'
+    : '<span class="chip">访客访问</span>'
+  const domainRows = summaries.map((s) => `<tr>
+      <td data-label="域名"><b>${esc(s.domain)}</b></td>
+      <td data-label="访问量" class="num">${s.count}</td>
+      <td data-label="最近访问">${fmtTime(s.last)}</td>
+      <td data-label="操作" class="row-actions"><a class="icon-btn" href="/admin/visits/${enc(s.domain)}">${ICON.eye} 详情</a></td>
+    </tr>`).join('')
+  const recentRows = recent.slice(0, 100).map((v) => `<tr>
+      <td data-label="域名"><b>${esc(v.domain)}</b></td>
+      <td data-label="时间">${fmtTime(v.ts)}</td>
+      <td data-label="IP">${esc(v.ip || '—')}</td>
+      <td data-label="来源" class="ua">${esc(v.ref || '—')}</td>
+      <td data-label="入口">${viaChip(v.via)}</td>
+    </tr>`).join('')
+
+  const inner = `
+    <div class="stats">
+      ${stat(total, '总访问量')}
+      ${stat(summaries.length, '有访问的域名')}
+      ${stat(recent.length ? fmtTime(recent[0].ts) : '—', '最近一次访问')}
+    </div>
+    <div class="glass panel panel-tight">
+      <h2 class="section-title">各域名访问量</h2>
+      ${summaries.length
+        ? `<div class="table-wrap"><table><thead><tr><th>域名</th><th>访问量</th><th>最近访问</th><th>操作</th></tr></thead><tbody>${domainRows}</tbody></table></div>`
+        : empty(ICON.eye, '暂无访问记录', '访客打开域名出售页后会自动记录')}
+    </div>
+    <div class="glass panel panel-tight">
+      <h2 class="section-title">最近访问（最新 100 条）</h2>
+      ${recent.length
+        ? `<div class="table-wrap"><table><thead><tr><th>域名</th><th>时间</th><th>IP</th><th>来源</th><th>入口</th></tr></thead><tbody>${recentRows}</tbody></table></div>`
+        : empty(ICON.eye, '暂无访问', '有人访问域名出售页后这里会出现记录')}
+    </div>`
+  return adminShell('visits', inner, {
+    title: '访问记录',
+    sub: `共 ${total} 次访问`,
+    actions: `<a class="btn ghost" href="/admin/domains">返回域名</a>`,
+  })
+}
+
+export function adminVisitsDomain(domain: string, visits: VisitRecord[], total: number, siteDomain = ''): string {
+  const rows = visits.map((v) => `<tr>
+      <td data-label="时间">${fmtTime(v.ts)}</td>
+      <td data-label="IP">${esc(v.ip || '—')}</td>
+      <td data-label="User-Agent" class="ua">${esc(v.ua || '—')}</td>
+      <td data-label="来源" class="ua">${esc(v.ref || '—')}</td>
+      <td data-label="入口">${v.via === 'preview' ? '<span class="chip">后台预览</span>' : '<span class="chip">访客访问</span>'}</td>
+    </tr>`).join('')
+  const inner = `
+    <div class="stats">
+      ${stat(total, '累计访问')}
+      ${stat(visits.length, '已展示（最新）')}
+    </div>
+    <div class="glass panel panel-tight">
+      <h2 class="section-title">${esc(domain)} 的访问明细</h2>
+      ${visits.length
+        ? `<div class="table-wrap"><table><thead><tr><th>时间</th><th>IP</th><th>User-Agent</th><th>来源</th><th>入口</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : empty(ICON.eye, '该域名暂无访问', '有人通过此域名打开出售页后会自动记录')}
+    </div>`
+  return adminShell('visits', inner, {
+    title: `${domain} 访问记录`,
+    sub: `累计 ${total} 次`,
+    actions: `<a class="btn ghost" href="/admin/visits">返回列表</a>`,
   })
 }
