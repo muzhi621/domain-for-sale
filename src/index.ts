@@ -265,12 +265,22 @@ app.get('/admin/visits/:domain', async (c) => {
   return c.html(views.adminVisitsDomain(domain, visits, total, siteDomain(c)))
 })
 
-// ---------- 按域名预览（无需 DNS：/d/example.com） ----------
+// ---------- 按域名预览（无需 DNS：/d/example.com，支持 ?theme= 覆盖） ----------
 app.get('/d/:domain', async (c) => {
   const domain = decodeURIComponent(c.req.param('domain')).toLowerCase().trim()
   const rec = await storage(c).getDomain(domain)
   if (!rec) return c.html(views.notFound(domain), 404)
-  return c.html(views.showcase(rec))
+  const theme = c.req.query('theme') || rec.theme || 'classic'
+  return c.html(views.showcase(rec, theme))
+})
+
+// ---------- 主题实时预览（iframe，需登录） ----------
+app.get('/admin/theme-preview', async (c) => {
+  const theme = c.req.query('theme') || 'classic'
+  const domain = (c.req.query('domain') || '').toLowerCase().trim()
+  let rec = domain ? await storage(c).getDomain(domain) : null
+  if (!rec) rec = { domain: domain || 'preview.example.com', status: 'for_sale', theme } as DomainRecord
+  return c.html(views.showcase(rec, theme))
 })
 
 // ---------- 访客展示页（按 Host 路由，兜底全捕获） ----------
