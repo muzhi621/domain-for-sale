@@ -115,14 +115,26 @@ export class Storage {
   }
 
   // ---------- 访问记录 ----------
+  // 设计：
+  //   visit:<domain>    —— 明细数组，仅保留最近 1000 条（滚动窗口，用于后台「最近访问」列表展示）
+  //   visit_count:<domain> —— 累计访问量（独立计数，不受明细上限影响，会一直累加）
   async addVisit(domain: string, v: Partial<VisitRecord> = {}): Promise<void> {
-    const key = 'visit:' + domain.toLowerCase()
+    domain = domain.toLowerCase()
+    const key = 'visit:' + domain
     let arr: VisitRecord[] = []
     const raw = await this.kv.get(key)
     if (raw) { try { arr = JSON.parse(raw) as VisitRecord[] } catch {} }
     arr.push({ ts: new Date().toISOString(), ...v } as VisitRecord)
-    if (arr.length > 1000) arr = arr.slice(-1000) // 上限保护，避免无限增长
+    if (arr.length > 1000) arr = arr.slice(-1000) // 明细仅保留最近 1000 条，避免无限增长
     await this.kv.put(key, JSON.stringify(arr))
+    // 累计计数：已有独立计数则 +1；首次访问以明细长度初始化（arr 已含本次，不再 +1）
+    const ck = 'visit_count:' + domain
+    const cur = await this.kv.get(ck)
+    if (cur != null) {
+      await this.kv.put(ck, String((Number(cur) || 0) + 1))
+    } else {
+      await this.kv.put(ck, String(arr.length))
+    }
   }
 
   async listVisits(domain: string, limit = 200): Promise<VisitRecord[]> {
@@ -135,9 +147,20 @@ export class Storage {
   }
 
   async countVisits(domain: string): Promise<number> {
+    const ck = 'visit_count:' + domain.toLowerCase()
+    const cur = await this.kv.get(ck)
+    if (cur != null) {
+      const n = Number(cur)
+      if (!Number.isNaN(n)) return n
+    }
+    // 兼容旧数据：尚无独立计数时，以明细长度兜底并初始化
     const raw = await this.kv.get('visit:' + domain.toLowerCase())
     if (!raw) return 0
-    try { return (JSON.parse(raw) as VisitRecord[]).length } catch { return 0 }
+    try {
+      const n = (JSON.parse(raw) as VisitRecord[]).length
+      await this.kv.put(ck, String(n))
+      return n
+    } catch { return 0 }
   }
 
   // 各域名访问汇总（用于列表/概览），按最近访问时间倒序
@@ -145,12 +168,19 @@ export class Storage {
     const { keys } = await this.kv.list({ prefix: 'visit:' })
     const out: { domain: string; count: number; last?: string }[] = []
     for (const k of keys) {
+      if (k.name.startsWith('visit_count:')) continue // 跳过累计计数键，避免污染列表
+      const domain = k.name.slice('visit:'.length)
       const raw = await this.kv.get(k.name)
       if (!raw) continue
-      try {
-        const arr = JSON.parse(raw) as VisitRecord[]
-        out.push({ domain: k.name.slice('visit:'.length), count: arr.length, last: arr[arr.length - 1]?.ts })
-      } catch {}
+      let arr: VisitRecord[] = []
+      try { arr = JSON.parse(raw) as VisitRecord[] } catch {}
+      const last = arr[arr.length - 1]?.ts
+      // 优先用独立累计计数；缺失则兜底为明细长度（兼容旧数据）
+      const cc = await this.kv.get('visit_count:' + domain)
+      let count: number
+      if (cc != null) { const n = Number(cc); count = Number.isNaN(n) ? arr.length : n }
+      else count = arr.length
+      out.push({ domain, count, last })
     }
     out.sort((a, b) => (b.last || '').localeCompare(a.last || ''))
     return out
@@ -159,8 +189,9 @@ export class Storage {
   // 全站最近访问（扁平），按时间倒序
   async recentVisits(limit = 300): Promise<(VisitRecord & { domain: string })[]> {
     const { keys } = await this.kv.list({ prefix: 'visit:' })
+    const filtered = keys.filter((k) => !k.name.startsWith('visit_count:'))
     const all: (VisitRecord & { domain: string })[] = []
-    for (const k of keys) {
+    for (const k of filtered) {
       const raw = await this.kv.get(k.name)
       if (!raw) continue
       try {
